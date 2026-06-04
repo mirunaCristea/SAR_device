@@ -7,10 +7,10 @@
 #include <SAR_Device_inferencing.h>
 #include <edge-impulse-sdk/dsp/numpy.hpp>
 
-static const float HELP_CANDIDATE_THRESHOLD = 0.90f;
-static const float HELP_STRONG_THRESHOLD = 0.95f;
-static const float HELP_MARGIN = 0.25f;
-static const float HELP_STRONG_MARGIN = 0.30f;
+static const float HELP_CANDIDATE_THRESHOLD = 0.82f;
+static const float HELP_STRONG_THRESHOLD = 0.92f;
+static const float HELP_MARGIN = 0.15f;
+static const float HELP_STRONG_MARGIN = 0.22f;
 static const uint8_t HELP_CONFIRM_COUNT = 2;
 
 static int16_t audioBuffer[EI_CLASSIFIER_RAW_SAMPLE_COUNT];
@@ -176,8 +176,9 @@ static bool runAudioClassifier() {
         helpCandidateStreak = 0;
     }
 
-    helpDetected = strongHelp || (helpCandidateStreak >= HELP_CONFIRM_COUNT);
+    // helpDetected = strongHelp || (helpCandidateStreak >= HELP_CONFIRM_COUNT);
 
+    helpDetected = strongHelp || candidateHelp;
     Serial.print("helpScore: ");
     Serial.println(helpScore, 4);
 
@@ -201,6 +202,7 @@ bool audio_ml_init() {
     helpScore = 0.0f;
     helpDetected = false;
     PDM.onReceive(onPdmData);
+    PDM.setGain(127);
     return PDM.begin(1, EI_CLASSIFIER_FREQUENCY);
 }
 

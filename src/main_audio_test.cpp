@@ -139,12 +139,13 @@ bool parseCommand(String command, String &testName, int &trialCount) {
 }
 
 void setup() {
-    delay(2000);
+    
     Serial.begin(115200);
-    delay(2000);
+    
 
     while (!Serial && millis() < 5000) {
         delay(10);
+        Serial.println(".");
     }
 
     Serial.println("Edge Impulse audio test");
