@@ -87,7 +87,7 @@
 #define EI_CLASSIFIER_PROJECT_ID                 976290
 #define EI_CLASSIFIER_PROJECT_OWNER              "mirunacristea"
 #define EI_CLASSIFIER_PROJECT_NAME               "SAR Device"
-#define EI_CLASSIFIER_PROJECT_DEPLOY_VERSION     2
+#define EI_CLASSIFIER_PROJECT_DEPLOY_VERSION     7
 #define EI_CLASSIFIER_NN_INPUT_FRAME_SIZE        650
 #define EI_CLASSIFIER_RAW_SAMPLE_COUNT           16000
 #define EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME      1
@@ -132,7 +132,7 @@
 #define EI_CLASSIFIER_HAS_VISUAL_ANOMALY            0
 #define EI_CLASSIFIER_HAS_MODEL_VARIABLES           1
 #define EI_CLASSIFIER_HAS_DATA_NORMALIZATION        0
-#define EI_CLASSIFIER_CALIBRATION_ENABLED           0
+#define EI_CLASSIFIER_CALIBRATION_ENABLED           1
 #define EI_CLASSIFIER_OBJECT_TRACKING_ENABLED       0
 #define EI_CLASSIFIER_TFLITE_LARGEST_ARENA_SIZE     6265
 #define EI_CLASSIFIER_LOAD_IMAGE_SCALING            0
@@ -353,7 +353,11 @@ typedef struct {
 } ei_dsp_config_eeg_t;
 
 typedef struct {
-    int:0;
+    char* detected_label;
+} ei_perf_cal_output_t;
+
+typedef struct {
+    ei_perf_cal_output_t perf_cal_output;
 } ei_post_processing_output_t;
 
 #endif // _EI_CLASSIFIER_MODEL_METADATA_H_

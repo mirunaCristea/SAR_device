@@ -4,6 +4,7 @@
 
 static const unsigned long PREPARE_DELAY_MS = 1000;
 static const unsigned long BETWEEN_TRIALS_MS = 1200;
+static const int WINDOWS_PER_TRIAL = 3;
 
 void printMenu() {
     Serial.println();
@@ -38,7 +39,7 @@ void runTest(String testName, int trialCount) {
     Serial.println(trialCount);
 
     Serial.println("Format rezultat:");
-    Serial.println("TRIAL;test;trialIndex;helpScore;detected");
+    Serial.println("TRIAL;test;trialIndex;helpScore;bestOther;margin;rms;mean;min;max;clipPct;detected");
 
     for (int i = 1; i <= trialCount; i++) {
         Serial.println();
@@ -51,20 +52,59 @@ void runTest(String testName, int trialCount) {
 
         Serial.println("START recording...");
 
-        if (!audio_ml_update()) {
+        bool trialOk = false;
+        bool detected = false;
+        float helpScore = 0.0f;
+        float bestOtherScore = 0.0f;
+        float margin = 0.0f;
+        float rms = 0.0f;
+        float mean = 0.0f;
+        int16_t minSample = 0;
+        int16_t maxSample = 0;
+        float clippingPercent = 0.0f;
+
+        for (int windowIndex = 1; windowIndex <= WINDOWS_PER_TRIAL; windowIndex++) {
+            Serial.print("Window ");
+            Serial.print(windowIndex);
+            Serial.print("/");
+            Serial.println(WINDOWS_PER_TRIAL);
+
+            if (!audio_ml_update()) {
+                Serial.println("ERR: audio ML window failed");
+                continue;
+            }
+
+            trialOk = true;
+
+            float currentHelpScore = audio_ml_getHelpScore();
+
+            if (currentHelpScore > helpScore) {
+                helpScore = currentHelpScore;
+                bestOtherScore = audio_ml_getBestOtherScore();
+                margin = audio_ml_getMargin();
+                rms = audio_ml_getRms();
+                mean = audio_ml_getMean();
+                minSample = audio_ml_getMinSample();
+                maxSample = audio_ml_getMaxSample();
+                clippingPercent = audio_ml_getClippingPercent();
+            }
+
+            if (audio_ml_isHelpDetected()) {
+                detected = true;
+            }
+        }
+
+        if (!trialOk) {
             Serial.print("TRIAL;");
             Serial.print(testName);
             Serial.print(";");
             Serial.print(i);
-            Serial.println(";ERR;0");
+            Serial.println(";ERR;ERR;ERR;ERR;ERR;ERR;ERR;ERR;0");
 
             Serial.println("ERR: audio ML update failed");
             delay(BETWEEN_TRIALS_MS);
             continue;
         }
-
-        float helpScore = audio_ml_getHelpScore();
-        bool detected = audio_ml_isHelpDetected();
 
         if (detected) {
             detectedCount++;
@@ -76,6 +116,20 @@ void runTest(String testName, int trialCount) {
         Serial.print(i);
         Serial.print(";");
         Serial.print(helpScore, 4);
+        Serial.print(";");
+        Serial.print(bestOtherScore, 4);
+        Serial.print(";");
+        Serial.print(margin, 4);
+        Serial.print(";");
+        Serial.print(rms, 2);
+        Serial.print(";");
+        Serial.print(mean, 2);
+        Serial.print(";");
+        Serial.print(minSample);
+        Serial.print(";");
+        Serial.print(maxSample);
+        Serial.print(";");
+        Serial.print(clippingPercent, 2);
         Serial.print(";");
         Serial.println(detected ? 1 : 0);
 
