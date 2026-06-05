@@ -7,6 +7,13 @@
 
 #include <SAR_Device_inferencing.h>
 #include <edge-impulse-sdk/dsp/numpy.hpp>
+// static const float HELP_CANDIDATE_THRESHOLD = 0.75f;
+// static const float HELP_STRONG_THRESHOLD = 0.88f;
+// static const float HELP_MARGIN = 0.15f;
+// static const float HELP_STRONG_MARGIN = 0.25f;
+// static const uint8_t HELP_CONFIRM_COUNT = 2;
+// static const int PDM_GAIN = 127;
+// static const int16_t CLIPPING_LIMIT = 30000;
 
 static const float HELP_CANDIDATE_THRESHOLD = 0.75f;
 static const float HELP_STRONG_THRESHOLD = 0.88f;
