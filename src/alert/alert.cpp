@@ -2,8 +2,16 @@
 
 static bool pendingFall = false;
 
+/*
+fall + help     → nivel 4
+fall            → nivel 4
+help            → nivel 3
+low battery     → nivel 2
+normal          → nivel 0
+*/
 
-AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, int battery)
+
+AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, int battery)
 {
     AlertData alertData;
 
@@ -11,9 +19,24 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, int battery)
     alertData.eventType = EVENT_NORMAL;
     alertData.shouldTransmitNow = false;
 
+  
+
     if (imuData.fallFlag) {
         pendingFall = true;
     }
+
+    bool helpDetected =
+    audioData.valid &&
+    audioData.state == AUDIO_HELP_DETECTED;
+
+
+    if (pendingFall && helpDetected) {
+    alertData.alertLevel = 4;
+    alertData.eventType = EVENT_FALL_AND_AUDIO_DISTRESS;
+    alertData.shouldTransmitNow = true;
+    return alertData;
+   }
+
 
     if (pendingFall && gpsData.valid) {
         alertData.alertLevel = 4;
@@ -25,6 +48,14 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, int battery)
     if (pendingFall && !gpsData.valid) {
         alertData.alertLevel = 4;
         alertData.eventType = EVENT_FALL_NO_GPS;
+        alertData.shouldTransmitNow = true;
+        return alertData;
+    }
+
+
+    if (helpDetected) {
+        alertData.alertLevel = 3;
+        alertData.eventType = EVENT_AUDIO_DISTRESS;
         alertData.shouldTransmitNow = true;
         return alertData;
     }

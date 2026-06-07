@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include "imu.h"
-#include <Arduino_BMI270_BMM150.h>
+#include <Arduino_LSM9DS1.h>
+
+//#include <Arduino_BMI270_BMM150.h>
+
 
 
 /*
@@ -28,7 +31,7 @@ void IMU_init() {
 
 IMUdata IMU_read()
 
-{   IMUdata data ={0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, false, MOTION_UNKNOWN, IMU_NORMAL};
+{   IMUdata data;
     if(IMU.accelerationAvailable())
     {   
         IMU.readAcceleration(data.ax,data.ay,data.az);

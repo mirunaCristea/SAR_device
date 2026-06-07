@@ -18,18 +18,18 @@ enum ImuState {   // spune ce eveniment sau situaite a detectat IMU-ul
 
 struct IMUdata
 {
-    float ax;
-    float ay;
-    float az;
-    float gx;
-    float gy;
-    float gz;
-    float asvm; // Scalar Vector Magnitude pentru acceleratie
-    float gsvm;
+    float ax = 0.0f;
+    float ay = 0.0f;
+    float az = 1.0f;
+    float gx = 0.0f;
+    float gy = 0.0f;
+    float gz = 0.0f;
+    float asvm = 1.0f;
+    float gsvm = 0.0f;
 
-    bool fallFlag;
-    MotionState motionState;
-    ImuState imuState;  
+    bool fallFlag = false;
+    MotionState motionState = MOTION_UNKNOWN;
+    ImuState imuState = IMU_NORMAL;
 };
 
 

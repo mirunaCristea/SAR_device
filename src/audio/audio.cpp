@@ -1,35 +1,53 @@
-// #include <PDM.h>
-// #include "audio.h"
+#include "audio.h"
+#include "audio_ml.h"
 
-// short sampleBuffer[256]; // Buffer pentru stocarea mostrelor audio  
-// volatile int samplesRead =0;
+#include <Arduino.h>
 
-// void onPDMdata()
-// {
-//     samplesRead = PDM.read(sampleBuffer, sizeof(sampleBuffer)); // Citeste mostrele audio in buffer
-// }
+static bool audioReady = false;
+static bool captureActive = false;
 
-// void mic_init()
-// {
-//     PDM.onReceive(onPDMdata);
-//     PDM.begin(1, 16000); 
+static void setUnavailable(AudioData &data)
+{
+    data.state = AUDIO_UNAVAILABLE;
+    data.helpScore = 0;
+    data.valid = false;
+}
 
-// }
+void audio_init()
+{
+    audioReady = audio_ml_init();
+    Serial.println(audioReady ? "Audio ML OK" : "Audio ML unavailable");
+}
 
-// void mic_read() {
-    
-//     if(samplesRead > 0) {
-//         float RMS = 0.0;
-//         int count = samplesRead / 2;
-        
-//         for(int i = 0; i < count; ++i) {
-//             RMS += (float)sampleBuffer[i] * sampleBuffer[i];
-//         }
-//         RMS = sqrt(RMS / count);
-        
-//         Serial.print("RMS: ");
-//         Serial.println(RMS);
-        
-//         samplesRead = 0; // ← resetezi după ce ai procesat
-//     }
-// }
+bool audio_update(AudioData &data)
+{
+    if (!audioReady) {
+        setUnavailable(data);
+        return false;
+    }
+
+    if (!captureActive) {
+        captureActive = audio_ml_startCapture();
+        return false;
+    }
+
+    if (!audio_ml_captureReady()) {
+        return false;
+    }
+
+    captureActive = false;
+
+    if (!audio_ml_process()) {
+        setUnavailable(data);
+        return true;
+    }
+
+    float score = constrain(audio_ml_getHelpScore(), 0.0f, 1.0f);
+
+    data.state =
+        audio_ml_isHelpDetected() ? AUDIO_HELP_DETECTED : AUDIO_NORMAL;
+    data.helpScore = static_cast<uint8_t>(score * 100.0f + 0.5f);
+    data.valid = true;
+
+    return true;
+}
