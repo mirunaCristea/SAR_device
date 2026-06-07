@@ -77,6 +77,12 @@ IMUdata IMU_interpret(IMUdata data)
         {  
             state =2;
             data.imuState = IMU_POSSIBLE_FALL;
+            Serial.println();
+            Serial.println("===== ANALIZA CADERE IMU =====");
+            Serial.print("[1] Acceleratie redusa detectata: ");
+            Serial.print(data.asvm, 3);
+            Serial.println(" g");
+            Serial.println("[2] Se cauta impactul si se colecteaza 200 esantioane...");
             return data;
         }
     }
@@ -88,8 +94,11 @@ IMUdata IMU_interpret(IMUdata data)
         if (state2Criteria==0 && data.asvm >1.4)
         {   state2Criteria=1;
             data.imuState = IMU_IMPACT;
-            Serial.println("STATE 2: IMPACT!");
-            Serial.println(">a_total:" + String(data.asvm));
+            Serial.print("[3] Impact detectat la esantionul ");
+            Serial.print(sampleCount + 1);
+            Serial.print(", aSVM = ");
+            Serial.print(data.asvm, 3);
+            Serial.println(" g");
         }
 
         gsvmBuffer[sampleCount]=data.gsvm;
@@ -97,6 +106,13 @@ IMUdata IMU_interpret(IMUdata data)
         ayBuffer[sampleCount]=data.ay;
         azBuffer[sampleCount]=data.az;
         sampleCount++;
+
+        if (sampleCount % 25 == 0 && sampleCount < 200)
+        {
+            Serial.print("[4] Colectare post-impact: ");
+            Serial.print(sampleCount);
+            Serial.println("/200 esantioane");
+        }
 
         if (sampleCount == 200)
         {   
@@ -120,38 +136,57 @@ IMUdata IMU_interpret(IMUdata data)
             }
             deviationAcc=sqrt(deviationAcc*0.02);
             deviationGyro=sqrt(deviationGyro*0.02);
-            Serial.print("Deviation Acc: ");
-            Serial.print(deviationAcc);
-            Serial.print(" mg, Deviation Gyro: ");
-            Serial.println(deviationGyro);
+            Serial.println("[5] Fereastra de analiza este completa.");
+            Serial.print("    Deviatie acceleratie: ");
+            Serial.print(deviationAcc, 3);
+            Serial.println(" g");
+            Serial.print("    Deviatie giroscop:    ");
+            Serial.print(deviationGyro, 2);
+            Serial.println(" dps");
 
             if (state2Criteria && deviationAcc <0.15 )
             {
                 state =3;
-                Serial.println("STATE 3: Semnal Stabilizat");
+                Serial.println("[6] Acceleratia s-a stabilizat.");
 
                 if(deviationGyro <10)
                 {
                     state =4;
-                    Serial.println("STATE 4: Semnal Stabilizat");
+                    Serial.println("[7] Miscarea de rotatie s-a stabilizat.");
 
                     for (int i = 180; i<200; ++i)
                     {   
                         unghi_inclinare+=atan2(ayBuffer[i],sqrt(axBuffer[i]*axBuffer[i] + azBuffer[i]*azBuffer[i])) * 180 / PI;
                     }
                     unghi_inclinare=unghi_inclinare*0.05;
-                    Serial.print("Unghi de inclinare: ");
-                    Serial.println(unghi_inclinare);
+                    Serial.print("[8] Unghi mediu de inclinare: ");
+                    Serial.print(unghi_inclinare, 2);
+                    Serial.println(" grade");
                     if (unghi_inclinare < 60)
                     {   state = 5;
                         data.imuState = IMU_CONFIRMED_FALL;
                         data.motionState = IMMOBILE;
                         data.fallFlag = true;
-                        Serial.println("STATE 5: FALL DETECTED");
+                        Serial.println("[9] DECIZIE: CADERE CONFIRMATA");
+                    }
+                    else
+                    {
+                        Serial.println("[9] DECIZIE: postura nu confirma caderea");
                     }
 
                 }
+                else
+                {
+                    Serial.println("[7] Miscare detectata: caderea nu este confirmata");
+                }
             }
+            else
+            {
+                Serial.println("[6] Semnal nestabil sau impact absent");
+                Serial.println("[9] DECIZIE: caderea nu este confirmata");
+            }
+
+            Serial.println("==============================");
 
 
             state = 1;
