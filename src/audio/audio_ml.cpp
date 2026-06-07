@@ -7,10 +7,11 @@
 #include <edge-impulse-sdk/dsp/numpy.hpp>
 
 static const float HELP_CANDIDATE_THRESHOLD = 0.75f;
-static const float HELP_STRONG_THRESHOLD = 0.88f;
 static const float HELP_MARGIN = 0.15f;
-static const float HELP_STRONG_MARGIN = 0.25f;
-static const uint8_t HELP_CONFIRM_COUNT = 2;
+static const float HELP_VERY_STRONG_THRESHOLD = 0.97f;
+static const float HELP_VERY_STRONG_MARGIN = 0.50f;
+static const uint8_t HELP_HISTORY_SIZE = 3;
+static const uint8_t HELP_REQUIRED_CANDIDATES = 2;
 static const int PDM_GAIN = 127;
 
 static int16_t audioBuffer[EI_CLASSIFIER_RAW_SAMPLE_COUNT];
@@ -22,7 +23,9 @@ static volatile bool recordingReady = false;
 
 static float helpScore = 0.0f;
 static bool helpDetected = false;
-static uint8_t helpCandidateStreak = 0;
+static bool helpCandidateHistory[HELP_HISTORY_SIZE] = {false};
+static uint8_t helpHistoryIndex = 0;
+static uint8_t helpHistoryCount = 0;
 
 static void clearAudioResult() {
     helpScore = 0.0f;
@@ -80,6 +83,34 @@ static bool isHelpLabel(const char *label) {
     return strcmp(label, "AJUTOR") == 0 || strcmp(label, "ajutor") == 0;
 }
 
+static bool confirmHelpCandidate(bool candidateHelp) {
+    helpCandidateHistory[helpHistoryIndex] = candidateHelp;
+    helpHistoryIndex = (helpHistoryIndex + 1) % HELP_HISTORY_SIZE;
+
+    if (helpHistoryCount < HELP_HISTORY_SIZE) {
+        helpHistoryCount++;
+    }
+
+    uint8_t candidateCount = 0;
+
+    for (uint8_t i = 0; i < helpHistoryCount; i++) {
+        if (helpCandidateHistory[i]) {
+            candidateCount++;
+        }
+    }
+
+    return candidateCount >= HELP_REQUIRED_CANDIDATES;
+}
+
+static void clearHelpHistory() {
+    for (uint8_t i = 0; i < HELP_HISTORY_SIZE; i++) {
+        helpCandidateHistory[i] = false;
+    }
+
+    helpHistoryIndex = 0;
+    helpHistoryCount = 0;
+}
+
 static bool runAudioClassifier() {
     clearAudioResult();
 
@@ -110,28 +141,22 @@ static bool runAudioClassifier() {
     float margin = helpScore - bestOtherScore;
     bool topIsHelp = helpScore > bestOtherScore;
 
-    bool strongHelp =
+    bool veryStrongHelp =
         topIsHelp &&
-        helpScore >= HELP_STRONG_THRESHOLD &&
-        margin >= HELP_STRONG_MARGIN;
+        helpScore >= HELP_VERY_STRONG_THRESHOLD &&
+        margin >= HELP_VERY_STRONG_MARGIN;
 
     bool candidateHelp =
         topIsHelp &&
         helpScore >= HELP_CANDIDATE_THRESHOLD &&
         margin >= HELP_MARGIN;
 
-    if (candidateHelp) {
-        if (helpCandidateStreak < 255) {
-            helpCandidateStreak++;
-        }
-    } else {
-        helpCandidateStreak = 0;
-    }
-
-    helpDetected = strongHelp || (helpCandidateStreak >= HELP_CONFIRM_COUNT);
+    helpDetected =
+        veryStrongHelp ||
+        confirmHelpCandidate(candidateHelp);
 
     if (helpDetected) {
-        helpCandidateStreak = 0;
+        clearHelpHistory();
     }
 
     return true;
@@ -140,6 +165,7 @@ static bool runAudioClassifier() {
 bool audio_ml_init() {
     helpScore = 0.0f;
     helpDetected = false;
+    clearHelpHistory();
     PDM.onReceive(onPdmData);
     PDM.setBufferSize(4096);
     PDM.setGain(PDM_GAIN);
