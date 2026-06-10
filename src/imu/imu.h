@@ -34,10 +34,10 @@ struct IMUdata
 
 
 
-void IMU_init();
-IMUdata IMU_read();
+bool IMU_init();
+bool IMU_read(IMUdata &data);
 IMUdata IMU_interpret(IMUdata data);
-// bool IMU_getFallFlag();
+
 
 
 #endif // IMU_H

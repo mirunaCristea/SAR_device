@@ -16,34 +16,43 @@ DIN LUCRAREA LUI TSENG !
 */
 
 
-void IMU_init() {
+bool IMU_init() {
     if(!IMU.begin())
     {
         Serial.println("IMU Error");
-        while(true);
+        return false;
     }
-    else
-    {
-        Serial.println("IMU OK");
-    }
+    
+    
+    Serial.println("IMU OK");
+    return true;
+  
 
 }
 
-IMUdata IMU_read()
+bool IMU_read(IMUdata &data)
+{
+    if (!IMU.accelerationAvailable() ||
+        !IMU.gyroscopeAvailable()) {
+        return false;
+    }
 
-{   IMUdata data;
-    if(IMU.accelerationAvailable())
-    {   
-        IMU.readAcceleration(data.ax,data.ay,data.az);
-        data.asvm = sqrt(data.ax*data.ax + data.ay*data.ay + data.az*data.az);
-    }
-    if(IMU.gyroscopeAvailable())
-    {   
-        IMU.readGyroscope(data.gx,data.gy,data.gz);
-        data.gsvm = sqrt(data.gx*data.gx + data.gy*data.gy + data.gz*data.gz);
-    }
-    
-    return data;
+    IMU.readAcceleration(data.ax, data.ay, data.az);
+    IMU.readGyroscope(data.gx, data.gy, data.gz);
+
+    data.asvm = sqrt(
+        data.ax * data.ax +
+        data.ay * data.ay +
+        data.az * data.az
+    );
+
+    data.gsvm = sqrt(
+        data.gx * data.gx +
+        data.gy * data.gy +
+        data.gz * data.gz
+    );
+
+    return true;
 }
 
 IMUdata IMU_interpret(IMUdata data)
@@ -59,8 +68,8 @@ IMUdata IMU_interpret(IMUdata data)
     static float ayBuffer[200];
     static float azBuffer[200];
     float unghi_inclinare = 0;
-    static bool state2Criteria=0;
-
+    static bool impactDetected = false;
+    static unsigned long collectionStartTime = 0;
     // valorile statice se acumuleaza intre apeluri 
 
     if (data.asvm > 0.9 && data.asvm < 1.1 && data.gsvm < 10) {
@@ -76,6 +85,10 @@ IMUdata IMU_interpret(IMUdata data)
         if (data.asvm < 0.8)
         {  
             state =2;
+            sampleCount = 0; // resetează contorul de mostre pentru starea 2
+            impactDetected = false; // resetează criteriul pentru starea 2
+            collectionStartTime = millis(); // începe monitorizarea pentru starea 2
+
             data.imuState = IMU_POSSIBLE_FALL;
             return data;
         }
@@ -83,23 +96,54 @@ IMUdata IMU_interpret(IMUdata data)
 
 
     if(state == 2)
-    {
-        asvmBuffer[sampleCount]=data.asvm;
-        if (state2Criteria==0 && data.asvm >1.4)
-        {   state2Criteria=1;
+
+    {   data.imuState = IMU_POSSIBLE_FALL;
+        
+        
+        if (sampleCount  < 200 ) {
+            // Dacă a trecut timpul maxim pentru impact, resetăm starea
+            gsvmBuffer[sampleCount]=data.gsvm;
+            asvmBuffer[sampleCount]=data.asvm;
+            axBuffer[sampleCount]=data.ax;
+            ayBuffer[sampleCount]=data.ay;
+            azBuffer[sampleCount]=data.az;
+
+               
+
+
+        if (!impactDetected && data.asvm >1.4)
+        {  
+            impactDetected=true;
             data.imuState = IMU_IMPACT;
-            Serial.println("STATE 2: IMPACT!");
-            Serial.println(">a_total:" + String(data.asvm));
+
+            Serial.println("STAREA 2: IMPACT!");
+
+            
+
         }
 
-        gsvmBuffer[sampleCount]=data.gsvm;
-        axBuffer[sampleCount]=data.ax;
-        ayBuffer[sampleCount]=data.ay;
-        azBuffer[sampleCount]=data.az;
         sampleCount++;
 
-        if (sampleCount == 200)
+    }
+
+
+        if (sampleCount >= 200)
         {   
+
+            Serial.print("Durata ferestrei de 200 esantioane: ");
+            Serial.print(millis() - collectionStartTime);
+            Serial.println(" ms");
+
+            if (!impactDetected) {
+                Serial.println("Impact absent in fereastra. Revenire la normal.");
+
+                state = 1; // Resetăm starea dacă impactul nu a fost detectat
+                sampleCount = 0;
+                impactDetected = false;
+                data.imuState = IMU_NORMAL;
+                return data;
+            }
+
             float meanAcc =0;
             float meanGyro =0;
             float deviationAcc =0;
@@ -120,34 +164,34 @@ IMUdata IMU_interpret(IMUdata data)
             }
             deviationAcc=sqrt(deviationAcc*0.02);
             deviationGyro=sqrt(deviationGyro*0.02);
-            Serial.print("Deviation Acc: ");
-            Serial.print(deviationAcc);
-            Serial.print(" mg, Deviation Gyro: ");
-            Serial.println(deviationGyro);
+            // Serial.print("Deviation Acc: ");
+            // Serial.print(deviationAcc);
+            // Serial.print(" g, Deviație Gyro: ");
+            // Serial.println(deviationGyro);
 
-            if (state2Criteria && deviationAcc <0.15 )
+            if (impactDetected && deviationAcc <0.15 )
             {
                 state =3;
-                Serial.println("STATE 3: Semnal Stabilizat");
+                Serial.println("STAREA 3: Semnal Stabilizat");
 
                 if(deviationGyro <10)
                 {
                     state =4;
-                    Serial.println("STATE 4: Semnal Stabilizat");
+                    Serial.println("STAREA 4: Semnal Stabilizat");
 
                     for (int i = 180; i<200; ++i)
                     {   
                         unghi_inclinare+=atan2(ayBuffer[i],sqrt(axBuffer[i]*axBuffer[i] + azBuffer[i]*azBuffer[i])) * 180 / PI;
                     }
                     unghi_inclinare=unghi_inclinare*0.05;
-                    Serial.print("Unghi de inclinare: ");
-                    Serial.println(unghi_inclinare);
-                    if (unghi_inclinare < 60)
+                    // Serial.print("Unghi de inclinare: ");
+                    // Serial.println(unghi_inclinare);
+                    if (fabsf(unghi_inclinare) < 60.0f)
                     {   state = 5;
                         data.imuState = IMU_CONFIRMED_FALL;
                         data.motionState = IMMOBILE;
                         data.fallFlag = true;
-                        Serial.println("STATE 5: FALL DETECTED");
+                        Serial.println("STAREA 5: CĂZĂTURĂ DETECTATĂ!");
                     }
 
                 }
@@ -156,7 +200,7 @@ IMUdata IMU_interpret(IMUdata data)
 
             state = 1;
             sampleCount = 0;
-            state2Criteria = 0;
+            impactDetected = false;
             meanAcc = 0; meanGyro = 0;
             deviationAcc = 0; deviationGyro = 0;
             unghi_inclinare = 0;

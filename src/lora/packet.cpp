@@ -11,9 +11,11 @@ ex: NODE1;0042;44.367260;26.145315;113.10;18:24:26;7;1;0;A3F2
 5.  113.10 — altitudine
 6.  18:24:26 — timestamp
 7.  7 — sateliți
-8.  1 — fall flag
-9.  0 — battery placeholder
-10. A3F2 — CRC16
+8. battery — nivelul bateriei
+9. eventType — tipul evenimentului (normal, căzătură, ajutor audio, baterie descărcată)
+10. alertLevel — nivelul alertei (0-4)
+
+
 */
 uint16_t crc16(String data) {
     uint16_t crc = 0xFFFF;

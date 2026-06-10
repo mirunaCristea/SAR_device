@@ -1,6 +1,11 @@
 #include "alert.h"
 
 static bool pendingFall = false;
+static bool pendingHelp = false;
+static bool pendingLowBattery = false;
+
+static bool helpWasActive = false;
+static bool lowBatteryWasActive = false;
 
 /*
 fall + help     → nivel 4
@@ -29,8 +34,22 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, 
     audioData.valid &&
     audioData.state == AUDIO_HELP_DETECTED;
 
+    if (helpDetected && !helpWasActive) {
+    pendingHelp = true;
+    }
 
-    if (pendingFall && helpDetected) {
+    helpWasActive = helpDetected;
+
+    bool lowBattery = battery < 20;
+
+    if (lowBattery && !lowBatteryWasActive) {
+        pendingLowBattery = true;
+    }
+
+    lowBatteryWasActive = lowBattery;
+
+
+    if (pendingFall && pendingHelp) {
     alertData.alertLevel = 4;
     alertData.eventType = EVENT_FALL_AND_AUDIO_DISTRESS;
     alertData.shouldTransmitNow = true;
@@ -53,14 +72,14 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, 
     }
 
 
-    if (helpDetected) {
+    if (pendingHelp) {
         alertData.alertLevel = 3;
         alertData.eventType = EVENT_AUDIO_DISTRESS;
         alertData.shouldTransmitNow = true;
         return alertData;
     }
 
-    if (battery < 20) {
+    if (pendingLowBattery) {
         alertData.alertLevel = 2;
         alertData.eventType = EVENT_LOW_BATTERY;
         alertData.shouldTransmitNow = true;
@@ -73,4 +92,6 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, 
 void alert_clearPending()
 {
     pendingFall = false;
+    pendingHelp = false;
+    pendingLowBattery = false;
 }

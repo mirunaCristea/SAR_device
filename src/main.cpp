@@ -3,13 +3,16 @@
 #include "alert/alert.h"
 #include "audio/audio.h"
 #include "config.h"
+#include "fusion/fusion.h"
 #include "gps/gps.h"
 #include "imu/imu.h"
 #include "lora/lora_comm.h"
 #include "lora/packet.h"
 
-static const unsigned long IMU_INTERVAL_MS = 20;
-static const unsigned long SEND_INTERVAL_MS = 5000;
+static const unsigned long IMU_INTERVAL_MS = 10;
+static const unsigned long SEND_INTERVAL_MS = 15000;
+
+
 
 void setup()
 {
@@ -23,7 +26,8 @@ void setup()
 }
 
 void loop()
-{
+{  
+
     static long counter = 0;
     static unsigned long lastImuTime = 0;
     static unsigned long lastSendTime = 0;
@@ -35,34 +39,69 @@ void loop()
 
     if (now - lastImuTime >= IMU_INTERVAL_MS) {
         lastImuTime = now;
-        imuData = IMU_interpret(IMU_read());
+
+        if (IMU_read(imuData))
+        {
+            imuData = IMU_interpret(imuData);
+        }
     }
 
-    if (audio_update(audioData)) {
-    Serial.print("Audio: ");
-    Serial.print(audioData.state == AUDIO_HELP_DETECTED ? "HELP" : "NORMAL");
-    Serial.print(" | score=");
-    Serial.println(audioData.helpScore);
-   }
+    bool imuWindowActive =
+    imuData.imuState == IMU_POSSIBLE_FALL ||
+    imuData.imuState == IMU_IMPACT;
+
+    if (!imuWindowActive && audio_update(audioData)) {
+        Serial.print("Audio: ");
+        Serial.print(
+            audioData.state == AUDIO_HELP_DETECTED ? "HELP" : "NORMAL"
+        );
+        Serial.print(" | score=");
+        Serial.println(audioData.helpScore);
+    }
     
 
     AlertData alertData =
         alert_evaluate(gpsData, imuData, audioData, 100);
 
-    if (now - lastSendTime < SEND_INTERVAL_MS) {
+    FusionData fusionData =
+        fusion_update(gpsData, imuData, audioData, 100);
+
+
+    if (imuWindowActive) {
+    return;
+    }    
+
+    bool periodicSend =
+        now - lastSendTime >= SEND_INTERVAL_MS;
+
+    bool emergencySend =
+        alertData.shouldTransmitNow;
+
+    if (!periodicSend && !emergencySend) {
         return;
     }
 
-    lastSendTime = now;
+   
 
     PacketData packetData;
     strcpy(packetData.callSign, CALL_SIGN);
     packetData.counter = ++counter;
     packetData.battery = 100;
     packetData.gpsData = gpsData;
+    packetData.gpsData.latitude = fusionData.latitude;
+    packetData.gpsData.longitude = fusionData.longitude;
+    packetData.gpsData.altitude = fusionData.altitude;
+    packetData.gpsData.valid = fusionData.locationValid;
     packetData.alertData = alertData;
 
     String message = packet_build(packetData);
-    lora_send(message.c_str());
-    alert_clearPending();
+    bool sentSuccessfully = lora_send(message.c_str());
+
+    if (sentSuccessfully) {
+        lastSendTime = now;
+
+        if (emergencySend) {
+            alert_clearPending();
+        }
+    }
 }
