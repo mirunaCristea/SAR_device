@@ -27,7 +27,7 @@ void setup()
 
 void loop()
 {  
-
+    static unsigned long lastFusionDebugTime = 0;
     static long counter = 0;
     static unsigned long lastImuTime = 0;
     static unsigned long lastSendTime = 0;
@@ -59,17 +59,28 @@ void loop()
         Serial.println(audioData.helpScore);
     }
     
+    FusionData fusionData = fusion_update(gpsData, imuData);
+    GpsData fusedGpsData=gpsData;
+    fusedGpsData.latitude = fusionData.latitude;
+    fusedGpsData.longitude = fusionData.longitude;
+    fusedGpsData.altitude = fusionData.altitude;
+    fusedGpsData.valid = fusionData.locationValid;
+    AlertData alertData = alert_evaluate(fusedGpsData, imuData, audioData, 100);
 
-    AlertData alertData =
-        alert_evaluate(gpsData, imuData, audioData, 100);
+    if (now - lastFusionDebugTime >= 1000) {
+    lastFusionDebugTime = now;
 
-    FusionData fusionData =
-        fusion_update(gpsData, imuData, audioData, 100);
-
-
-    if (imuWindowActive) {
-    return;
-    }    
+    Serial.print("Fusion source=");
+    Serial.print((int)fusionData.locationSource);
+    Serial.print(" conf=");
+    Serial.print(fusionData.locationConfidence);
+    Serial.print(" valid=");
+    Serial.print(fusionData.locationValid);
+    Serial.print(" lat=");
+    Serial.print(fusionData.latitude, 6);
+    Serial.print(" lon=");
+    Serial.println(fusionData.longitude, 6);
+}
 
     bool periodicSend =
         now - lastSendTime >= SEND_INTERVAL_MS;
@@ -87,12 +98,10 @@ void loop()
     strcpy(packetData.callSign, CALL_SIGN);
     packetData.counter = ++counter;
     packetData.battery = 100;
-    packetData.gpsData = gpsData;
-    packetData.gpsData.latitude = fusionData.latitude;
-    packetData.gpsData.longitude = fusionData.longitude;
-    packetData.gpsData.altitude = fusionData.altitude;
-    packetData.gpsData.valid = fusionData.locationValid;
+    packetData.gpsData = fusedGpsData;
     packetData.alertData = alertData;
+    packetData.locationSource = fusionData.locationSource;
+    packetData.locationConfidence = fusionData.locationConfidence;
 
     String message = packet_build(packetData);
     bool sentSuccessfully = lora_send(message.c_str());
@@ -104,4 +113,6 @@ void loop()
             alert_clearPending();
         }
     }
+
+
 }
