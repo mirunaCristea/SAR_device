@@ -21,14 +21,19 @@ void lora_init()
 
 }
 
-void lora_send(const char* message)
+bool lora_send(const char* message)
 {
     LoRa.beginPacket();
     LoRa.print(message); // Adaugă un mesaj la pachet
-    if(!LoRa.endPacket()) // Trimite pachetul
-    {
-        Serial.println("Error sending packet");
+
+    bool sentSuccessfully = LoRa.endPacket() == 1;
+
+    if (!sentSuccessfully) {
+        Serial.println("Eroare transmitere LoRa");
+        return false;
     }
-    Serial.print("Sent: ");
-    Serial.println(message);
+
+   Serial.print("Sent: ");
+   Serial.println(message);
+   return true;
 }

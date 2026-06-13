@@ -5,13 +5,16 @@
 #include "gps/gps.h"
 #include "imu/imu.h"
 #include "alert/alert.h"
-
+#include "fusion/fusion.h"
+#include "power/power.h"
 struct PacketData {
     char callSign[10];
     long counter;
-    int battery;
-    GpsData gpsData;
-    AlertData alertData;
+    uint8_t batteryPercent;
+
+    GpsData gpsData; // pt TIME
+    AlertData alertData; // pt eventType si alertLevel
+    FusionData fusionData; // pt pozitia finala + locationSource
 
 };
 
