@@ -1,0 +1,103 @@
+#include <Arduino.h>
+
+#include "gps/gps.h"
+#include "imu/imu.h"
+#include "fusion/fusion.h"
+
+static const unsigned long IMU_INTERVAL_MS = 10;
+static const unsigned long PRINT_INTERVAL_MS = 1000;
+
+void setup()
+{
+    Serial.begin(115200);
+    delay(3000);
+
+    Serial.println("=== TEST 3: GPS STATIONARY + FUSION ===");
+    Serial.println("Scop: verificare stabilitate GPS cand dispozitivul este nemiscat.");
+    Serial.println("Tine dispozitivul afara, nemiscat, timp de 5 minute.");
+    Serial.println();
+    Serial.println("Coduri LocationSource:");
+    Serial.println("0 = LOCATION_UNAVAILABLE");
+    Serial.println("1 = LOCATION_GPS_CURRENT");
+    Serial.println("2 = LOCATION_LAST_KNOWN");
+    Serial.println("3 = LOCATION_REJECTED_OUTLIER");
+    Serial.println();
+    Serial.println("Format:");
+    Serial.println("millis;gpsValid;time;sat;gpsLat;gpsLon;gpsAlt;motionState;fusionValid;source;conf;fusionLat;fusionLon;fusionAlt");
+
+    gps_init();
+
+    if (!IMU_init())
+    {
+        Serial.println("IMU init failed");
+    }
+}
+
+void loop()
+{
+    static unsigned long lastImuTime = 0;
+    static unsigned long lastPrintTime = 0;
+    static IMUdata imuData;
+
+    unsigned long now = millis();
+
+    GpsData gpsData = gps_read();
+
+    if (now - lastImuTime >= IMU_INTERVAL_MS)
+    {
+        lastImuTime = now;
+
+        if (IMU_read(imuData))
+        {
+            imuData = IMU_interpret(imuData);
+        }
+    }
+
+    FusionData fusionData = fusion_update(gpsData, imuData);
+
+    if (now - lastPrintTime >= PRINT_INTERVAL_MS)
+    {
+        lastPrintTime = now;
+
+        Serial.print(now);
+        Serial.print(";");
+
+        Serial.print(gpsData.valid ? "1" : "0");
+        Serial.print(";");
+
+        Serial.print(gpsData.timestamp);
+        Serial.print(";");
+
+        Serial.print(gpsData.satCount);
+        Serial.print(";");
+
+        Serial.print(gpsData.latitude, 6);
+        Serial.print(";");
+
+        Serial.print(gpsData.longitude, 6);
+        Serial.print(";");
+
+        Serial.print(gpsData.altitude, 2);
+        Serial.print(";");
+
+        Serial.print((int)imuData.motionState);
+        Serial.print(";");
+
+        Serial.print(fusionData.locationValid ? "1" : "0");
+        Serial.print(";");
+
+        Serial.print((int)fusionData.locationSource);
+        Serial.print(";");
+
+        Serial.print(fusionData.locationConfidence);
+        Serial.print(";");
+
+        Serial.print(fusionData.latitude, 6);
+        Serial.print(";");
+
+        Serial.print(fusionData.longitude, 6);
+        Serial.print(";");
+
+        Serial.println(fusionData.altitude, 2);
+    }
+}

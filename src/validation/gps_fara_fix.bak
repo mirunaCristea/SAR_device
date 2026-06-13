@@ -1,0 +1,66 @@
+#include <Arduino.h>
+#include "gps/gps.h"
+
+static const unsigned long PRINT_INTERVAL_MS = 1000;
+
+void setup()
+{
+    Serial.begin(115200);
+    delay(3000);
+
+    Serial.println("=== TEST 1: GPS NO FIX / INDOOR ===");
+    Serial.println("Scop: verificare comportament cand GPS-ul nu are fix.");
+    Serial.println("Asteptat: gpsValid=0, sat=0, coordonate 0, timp 00:00:00.");
+    Serial.println();
+}
+
+void loop()
+{
+    static unsigned long lastPrintTime = 0;
+    static unsigned int lineCounter = 0;
+
+    GpsData gpsData = gps_read();
+    unsigned long now = millis();
+
+    if (now - lastPrintTime >= PRINT_INTERVAL_MS)
+    {
+        lastPrintTime = now;
+        lineCounter++;
+
+        Serial.print("[");
+        Serial.print(lineCounter);
+        Serial.print("] ");
+
+        Serial.print("millis=");
+        Serial.print(now);
+
+        Serial.print(" | gpsValid=");
+        Serial.print(gpsData.valid ? "YES" : "NO");
+
+        Serial.print(" | time=");
+        Serial.print(gpsData.timestamp);
+
+        Serial.print(" | sat=");
+        Serial.print(gpsData.satCount);
+
+        Serial.print(" | lat=");
+        Serial.print(gpsData.latitude, 6);
+
+        Serial.print(" | lon=");
+        Serial.print(gpsData.longitude, 6);
+
+        Serial.print(" | alt=");
+        Serial.print(gpsData.altitude, 2);
+
+        if (!gpsData.valid)
+        {
+            Serial.print(" | STATUS=NO_FIX_OK");
+        }
+        else
+        {
+            Serial.print(" | STATUS=GPS_FIX_DETECTED");
+        }
+
+        Serial.println();
+    }
+}
