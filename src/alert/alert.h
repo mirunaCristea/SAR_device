@@ -15,7 +15,7 @@ enum EventType {
 };
 
 struct AlertData {
-    int alertLevel;
+    uint8_t alertLevel;
     EventType eventType;
     bool shouldTransmitNow;
 };

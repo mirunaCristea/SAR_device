@@ -107,14 +107,14 @@ void loop()
    
 
     PacketData packetData;
+
     strcpy(packetData.callSign, CALL_SIGN);
     packetData.counter = ++counter;
     packetData.batteryPercent = battery.percent;
-    packetData.gpsData = fusedGpsData;
+    packetData.gpsData = gpsData;
+    packetData.fusionData = fusionData;
     packetData.alertData = alertData;
-    packetData.locationSource = fusionData.locationSource;
-    packetData.locationConfidence = fusionData.locationConfidence;
-
+    
     String message = packet_build(packetData);
     bool sentSuccessfully = lora_send(message.c_str());
 

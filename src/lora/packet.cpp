@@ -157,7 +157,7 @@ String packet_build(PacketData data)
     int altM = 0;
 
     if (data.fusionData.locationValid)
-    {
+    {   
         latE6 = lroundf(data.fusionData.latitude * 1000000.0f);
         lonE6 = lroundf(data.fusionData.longitude * 1000000.0f);
         altM = round(data.fusionData.altitude);
