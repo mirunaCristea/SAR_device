@@ -9,3 +9,4 @@
 #define GPS_RX A2
 #define GPS_TX A3
 #define CALL_SIGN "NODE1" // Call sign pentru identificarea nodului
+#define TIMEZONE_OFFSET_HOURS 3 // Offset pentru fusul orar (ex: 3 pentru EEST)

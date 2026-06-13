@@ -1,7 +1,13 @@
 #ifndef AUDIO_ML_H
 #define AUDIO_ML_H
 
-#include <SAR_Device_inferencing.h>
+#include <stdint.h>
 
+bool audio_ml_init();
+bool audio_ml_startCapture();
+bool audio_ml_captureReady();
+bool audio_ml_process();
+float audio_ml_getHelpScore();
+bool audio_ml_isHelpDetected();
 
-#endif // AUDIO_ML_H
+#endif

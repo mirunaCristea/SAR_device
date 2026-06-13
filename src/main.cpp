@@ -1,61 +1,130 @@
 #include <Arduino.h>
-#include "lora/lora_comm.h"
+
+#include "alert/alert.h"
+#include "audio/audio.h"
 #include "config.h"
+#include "fusion/fusion.h"
 #include "gps/gps.h"
 #include "imu/imu.h"
+#include "lora/lora_comm.h"
 #include "lora/packet.h"
-#include "audio/audio.h"
-#include "alert/alert.h"
+#include "power/power.h"
+
+static const unsigned long IMU_INTERVAL_MS = 10;
+static const unsigned long SEND_INTERVAL_MS = 15000;
+
 
 
 void setup()
-{   
+{
     Serial.begin(115200);
-    delay(2000);
+    delay(5000);
+
     lora_init();
     gps_init();
     IMU_init();
-    // mic_init();
+    audio_init();
+    battery_init();
 
-   
-    // lora_init();
-    delay(4000);
-    
 }
 
 void loop()
 {  
-     static long counter = 0;
+    static unsigned long lastFusionDebugTime = 0;
+    static long counter = 0;
+    static unsigned long lastImuTime = 0;
     static unsigned long lastSendTime = 0;
+    static IMUdata imuData;
+    static AudioData audioData;
 
     GpsData gpsData = gps_read();
-    IMUdata imuData = IMU_read();
-    imuData=IMU_interpret(imuData);
+    unsigned long now = millis();
 
-    AlertData alertData = alert_evaluate(gpsData, imuData, 100);   // Placeholder pentru valoarea bateriei
+    if (now - lastImuTime >= IMU_INTERVAL_MS) {
+        lastImuTime = now;
 
-    PacketData packetData;
-    strcpy(packetData.callSign, CALL_SIGN);
-    packetData.battery = 100; // Placeholder pentru valoarea bateriei
-    packetData.gpsData = gpsData;
-    packetData.alertData = alertData;
+        if (IMU_read(imuData))
+        {
+            imuData = IMU_interpret(imuData);
+        }
+    }
 
+    bool imuWindowActive =
+    imuData.imuState == IMU_POSSIBLE_FALL ||
+    imuData.imuState == IMU_IMPACT;
 
-    if(millis() - lastSendTime > 5000) // Trimite un pachet la fiecare 5 secunde
-    {
-        lastSendTime = millis();
-        counter++;
-        packetData.counter = counter;
-        String message = packet_build(packetData);
-        Serial.println(message);
-        lora_send(message.c_str());
-        Serial.println(message.length());
-        Serial.println("alertData: " + String(alertData.eventType) + ", " + String(alertData.alertLevel) + ", " + String(alertData.shouldTransmitNow));
-        alert_clearPending(); // Resetează starea de alertă după trimiterea pachetului  
-        // Construiește și trimite pachetul LoRa aici
+    if (!imuWindowActive && audio_update(audioData)) {
+        Serial.print("Audio: ");
+        Serial.print(
+            audioData.state == AUDIO_HELP_DETECTED ? "HELP" : "NORMAL"
+        );
+        Serial.print(" | score=");
+        Serial.println(audioData.helpScore);
     }
     
+    FusionData fusionData = fusion_update(gpsData, imuData);
+    GpsData fusedGpsData=gpsData;
+    fusedGpsData.latitude = fusionData.latitude;
+    fusedGpsData.longitude = fusionData.longitude;
+    fusedGpsData.altitude = fusionData.altitude;
+    fusedGpsData.valid = fusionData.locationValid;
+    AlertData alertData = alert_evaluate(fusedGpsData, imuData, audioData, 100);
 
+    if (now - lastFusionDebugTime >= 1000) {
+        lastFusionDebugTime = now;
+
+        Serial.print("Fusion source=");
+        Serial.print((int)fusionData.locationSource);
+        Serial.print(" conf=");
+        Serial.print(fusionData.locationConfidence);
+        Serial.print(" valid=");
+        Serial.print(fusionData.locationValid);
+        Serial.print(" lat=");
+        Serial.print(fusionData.latitude, 6);
+        Serial.print(" lon=");
+        Serial.println(fusionData.longitude, 6);
+}
+
+
+    BatteryData battery = battery_read();
+
+    // Serial.print("Battery voltage: ");
+    // Serial.print(battery.voltage, 2);
+    // Serial.print(" V | Battery: ");
+    // Serial.print(battery.percent);
+    // Serial.println("%");
+
+    bool periodicSend =
+        now - lastSendTime >= SEND_INTERVAL_MS;
+
+    bool emergencySend =
+        alertData.shouldTransmitNow;
+
+    if (!periodicSend && !emergencySend) {
+        return;
+    }
+
+   
+
+    PacketData packetData;
+
+    strcpy(packetData.callSign, CALL_SIGN);
+    packetData.counter = ++counter;
+    packetData.batteryPercent = battery.percent;
+    packetData.gpsData = gpsData;
+    packetData.fusionData = fusionData;
+    packetData.alertData = alertData;
+    
+    String message = packet_build(packetData);
+    bool sentSuccessfully = lora_send(message.c_str());
+
+    if (sentSuccessfully) {
+        lastSendTime = now;
+
+        if (emergencySend) {
+            alert_clearPending();
+        }
+    }
 
 
 }
