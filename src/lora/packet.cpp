@@ -148,9 +148,10 @@ String packet_build(PacketData data)
 {
     char message[120];
     char timeStr[7];
+    char timeWithOffset[9];
     
-    apply_timezone_offset(data.gpsData.timestamp, timeStr, TIMEZONE_OFFSET_HOURS);
-    format_time_hhmmss(data.gpsData.timestamp, timeStr);
+    apply_timezone_offset(data.gpsData.timestamp, timeWithOffset, TIMEZONE_OFFSET_HOURS);
+    format_time_hhmmss(timeWithOffset, timeStr);
 
     long latE6 = 0;
     long lonE6 = 0;

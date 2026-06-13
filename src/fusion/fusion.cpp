@@ -58,7 +58,7 @@ FusionData fusion_update(const GpsData& gpsData, const IMUdata& imuData)
     fusionData.fallDetected = imuData.fallFlag;
 
     if (!gpsData.valid)
-    {
+    {   
         if (lastPositionAvailable)
         {
             fusionData.locationSource = LOCATION_LAST_KNOWN;

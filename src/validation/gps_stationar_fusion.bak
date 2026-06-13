@@ -7,30 +7,83 @@
 static const unsigned long IMU_INTERVAL_MS = 10;
 static const unsigned long PRINT_INTERVAL_MS = 1000;
 
+static unsigned long startTime = 0;
+
+const char* motionStateText(MotionState state)
+{
+    switch (state)
+    {
+        case MOVING:
+            return "MISCARE";
+        case STATIONARY:
+            return "STATIONAR";
+        case IMMOBILE:
+            return "IMOBIL";
+        default:
+            return "NECUNOSCUT";
+    }
+}
+
+const char* locationSourceText(LocationSource source)
+{
+    switch (source)
+    {
+        case LOCATION_UNAVAILABLE:
+            return "POZITIE INDISPONIBILA";
+        case LOCATION_GPS_CURRENT:
+            return "GPS CURENT ACCEPTAT";
+        case LOCATION_LAST_KNOWN:
+            return "ULTIMA POZITIE VALIDA";
+        case LOCATION_REJECTED_OUTLIER:
+            return "GPS RESPINS - SALT SUSPECT";
+        default:
+            return "SURSA NECUNOSCUTA";
+    }
+}
+
 void setup()
 {
     Serial.begin(115200);
     delay(3000);
 
-    Serial.println("=== TEST 3: GPS STATIONARY + FUSION ===");
-    Serial.println("Scop: verificare stabilitate GPS cand dispozitivul este nemiscat.");
-    Serial.println("Tine dispozitivul afara, nemiscat, timp de 5 minute.");
     Serial.println();
-    Serial.println("Coduri LocationSource:");
-    Serial.println("0 = LOCATION_UNAVAILABLE");
-    Serial.println("1 = LOCATION_GPS_CURRENT");
-    Serial.println("2 = LOCATION_LAST_KNOWN");
-    Serial.println("3 = LOCATION_REJECTED_OUTLIER");
+    Serial.println("================================================");
+    Serial.println(" TEST 3 - GPS STATIONAR SI FUZIUNE GPS-IMU");
+    Serial.println("================================================");
     Serial.println();
-    Serial.println("Format:");
-    Serial.println("millis;gpsValid;time;sat;gpsLat;gpsLon;gpsAlt;motionState;fusionValid;source;conf;fusionLat;fusionLon;fusionAlt");
+    Serial.println("Obiectiv:");
+    Serial.println("- verificarea stabilitatii pozitiei GPS");
+    Serial.println("- verificarea comportamentului fuziunii GPS-IMU");
+    Serial.println("- respingerea salturilor GPS suspecte cand dispozitivul este nemiscat");
+    Serial.println();
+    Serial.println("Conditii:");
+    Serial.println("- dispozitiv afara");
+    Serial.println("- dispozitiv nemiscat aproximativ 5 minute");
+    Serial.println("- cer cat mai liber");
+    Serial.println();
+    Serial.println("Coduri sursa pozitie:");
+    Serial.println("0 = pozitie indisponibila");
+    Serial.println("1 = GPS curent acceptat");
+    Serial.println("2 = ultima pozitie valida");
+    Serial.println("3 = GPS respins ca salt suspect");
+    Serial.println();
 
     gps_init();
 
     if (!IMU_init())
     {
-        Serial.println("IMU init failed");
+        Serial.println("EROARE: IMU nu a fost initializat.");
     }
+    else
+    {
+        Serial.println("IMU initializat corect.");
+    }
+
+    startTime = millis();
+
+    Serial.println();
+    Serial.println("Test pornit...");
+    Serial.println();
 }
 
 void loop()
@@ -38,6 +91,12 @@ void loop()
     static unsigned long lastImuTime = 0;
     static unsigned long lastPrintTime = 0;
     static IMUdata imuData;
+
+    static unsigned int sampleCounter = 0;
+    static unsigned int gpsCurrentCount = 0;
+    static unsigned int lastKnownCount = 0;
+    static unsigned int rejectedCount = 0;
+    static unsigned int unavailableCount = 0;
 
     unsigned long now = millis();
 
@@ -58,46 +117,138 @@ void loop()
     if (now - lastPrintTime >= PRINT_INTERVAL_MS)
     {
         lastPrintTime = now;
+        sampleCounter++;
 
-        Serial.print(now);
-        Serial.print(";");
+        if (fusionData.locationSource == LOCATION_GPS_CURRENT)
+        {
+            gpsCurrentCount++;
+        }
+        else if (fusionData.locationSource == LOCATION_LAST_KNOWN)
+        {
+            lastKnownCount++;
+        }
+        else if (fusionData.locationSource == LOCATION_REJECTED_OUTLIER)
+        {
+            rejectedCount++;
+        }
+        else
+        {
+            unavailableCount++;
+        }
 
-        Serial.print(gpsData.valid ? "1" : "0");
-        Serial.print(";");
+        Serial.println("------------------------------------------------");
+        Serial.print("Esantion: ");
+        Serial.println(sampleCounter);
 
-        Serial.print(gpsData.timestamp);
-        Serial.print(";");
+        Serial.print("Timp rulare: ");
+        Serial.print((now - startTime) / 1000.0f, 1);
+        Serial.println(" s");
 
-        Serial.print(gpsData.satCount);
-        Serial.print(";");
+        Serial.println();
 
-        Serial.print(gpsData.latitude, 6);
-        Serial.print(";");
+        Serial.println("DATE GPS BRUTE");
+        Serial.print("Actualizare GPS valida acum: ");
+        Serial.println(gpsData.valid ? "DA" : "NU");
 
-        Serial.print(gpsData.longitude, 6);
-        Serial.print(";");
+        Serial.print("Ora GPS: ");
+        Serial.println(gpsData.timestamp);
 
+        Serial.print("Numar sateliti: ");
+        Serial.println(gpsData.satCount);
+
+        Serial.print("Latitudine GPS: ");
+        Serial.println(gpsData.latitude, 6);
+
+        Serial.print("Longitudine GPS: ");
+        Serial.println(gpsData.longitude, 6);
+
+        Serial.print("Altitudine GPS: ");
         Serial.print(gpsData.altitude, 2);
-        Serial.print(";");
+        Serial.println(" m");
 
+        Serial.println();
+
+        Serial.println("DATE IMU");
+        Serial.print("Stare miscare: ");
+        Serial.print(motionStateText(imuData.motionState));
+        Serial.print(" (cod ");
         Serial.print((int)imuData.motionState);
-        Serial.print(";");
+        Serial.println(")");
 
-        Serial.print(fusionData.locationValid ? "1" : "0");
-        Serial.print(";");
+        Serial.print("ASVM: ");
+        Serial.print(imuData.asvm, 3);
+        Serial.println(" g");
 
+        Serial.print("GSVM: ");
+        Serial.print(imuData.gsvm, 2);
+        Serial.println(" dps");
+
+        Serial.println();
+
+        Serial.println("REZULTAT FUZIUNE GPS-IMU");
+        Serial.print("Pozitie finala valida: ");
+        Serial.println(fusionData.locationValid ? "DA" : "NU");
+
+        Serial.print("Sursa pozitiei: ");
+        Serial.print(locationSourceText(fusionData.locationSource));
+        Serial.print(" (cod ");
         Serial.print((int)fusionData.locationSource);
-        Serial.print(";");
+        Serial.println(")");
 
+        Serial.print("Nivel incredere: ");
         Serial.print(fusionData.locationConfidence);
-        Serial.print(";");
+        Serial.println(" / 100");
 
-        Serial.print(fusionData.latitude, 6);
-        Serial.print(";");
+        Serial.print("Latitudine finala: ");
+        Serial.println(fusionData.latitude, 6);
 
-        Serial.print(fusionData.longitude, 6);
-        Serial.print(";");
+        Serial.print("Longitudine finala: ");
+        Serial.println(fusionData.longitude, 6);
 
-        Serial.println(fusionData.altitude, 2);
+        Serial.print("Altitudine finala: ");
+        Serial.print(fusionData.altitude, 2);
+        Serial.println(" m");
+
+        Serial.println();
+
+        Serial.println("REZUMAT TEST");
+        Serial.print("GPS curent acceptat: ");
+        Serial.println(gpsCurrentCount);
+
+        Serial.print("Ultima pozitie valida folosita: ");
+        Serial.println(lastKnownCount);
+
+        Serial.print("Salturi GPS respinse: ");
+        Serial.println(rejectedCount);
+
+        Serial.print("Pozitie indisponibila: ");
+        Serial.println(unavailableCount);
+
+        Serial.print("Status test: ");
+
+        if (fusionData.locationSource == LOCATION_GPS_CURRENT &&
+            imuData.motionState == STATIONARY)
+        {
+            Serial.println("OK - dispozitiv stationar, GPS acceptat");
+        }
+        else if (fusionData.locationSource == LOCATION_REJECTED_OUTLIER)
+        {
+            Serial.println("OK - salt GPS suspect respins de fuziune");
+        }
+        else if (fusionData.locationSource == LOCATION_LAST_KNOWN)
+        {
+            Serial.println("OK - se foloseste ultima pozitie valida");
+        }
+        else if (fusionData.locationSource == LOCATION_UNAVAILABLE)
+        {
+            Serial.println("ASTEPTARE - nu exista inca pozitie valida");
+        }
+        else
+        {
+            Serial.println("IN ANALIZA");
+        }
+
+        Serial.println("------------------------------------------------");
+        Serial.println();
     }
 }
