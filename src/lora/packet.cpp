@@ -46,7 +46,7 @@ Aceasta codare reduce dimensiunea payload-ului LoRa,
 pastrand separat informatia despre severitatea alertei,
 tipul evenimentului si calitatea/sursa pozitiei transmise.
 */
-
+// Functie pentru calcul CRC-16 (polinom 0xA001)
 
 
 
