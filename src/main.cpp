@@ -88,11 +88,11 @@ void loop()
 
     BatteryData battery = battery_read();
 
-    Serial.print("Battery voltage: ");
-    Serial.print(battery.voltage, 2);
-    Serial.print(" V | Battery: ");
-    Serial.print(battery.percent);
-    Serial.println("%");
+    // Serial.print("Battery voltage: ");
+    // Serial.print(battery.voltage, 2);
+    // Serial.print(" V | Battery: ");
+    // Serial.print(battery.percent);
+    // Serial.println("%");
 
     bool periodicSend =
         now - lastSendTime >= SEND_INTERVAL_MS;

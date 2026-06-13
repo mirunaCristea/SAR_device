@@ -73,12 +73,12 @@ uint16_t crc16(String data) {
 
 }
 
-void apply_timezone_offset(const char* inputTime, char* outputTime, int8_t timezoneOffsetHours)
+char* apply_timezone_offset(const char* inputTime, char* outputTime, int8_t timezoneOffsetHours)
 {
 
     if (strlen(inputTime) < 8) {
         strcpy(outputTime, "00:00:00");
-        return;
+        return outputTime;
     }
 
     int hour = (inputTime[0] - '0') * 10 + (inputTime[1] - '0');
@@ -99,6 +99,8 @@ void apply_timezone_offset(const char* inputTime, char* outputTime, int8_t timez
         inputTime[6],
         inputTime[7]
     );
+
+    return outputTime;
 }
 
 void format_time_hhmmss(const char* inputTime, char* outputTime )
@@ -148,9 +150,10 @@ String packet_build(PacketData data)
 {
     char message[120];
     char timeStr[7];
+    char gpsTimeStr[9];
     
-    apply_timezone_offset(data.gpsData.timestamp, timeStr, TIMEZONE_OFFSET_HOURS);
-    format_time_hhmmss(data.gpsData.timestamp, timeStr);
+    apply_timezone_offset(data.gpsData.timestamp, gpsTimeStr, TIMEZONE_OFFSET_HOURS);
+    format_time_hhmmss(gpsTimeStr, timeStr);
 
     long latE6 = 0;
     long lonE6 = 0;
