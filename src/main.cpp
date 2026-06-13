@@ -8,6 +8,7 @@
 #include "imu/imu.h"
 #include "lora/lora_comm.h"
 #include "lora/packet.h"
+#include "power/power.h"
 
 static const unsigned long IMU_INTERVAL_MS = 10;
 static const unsigned long SEND_INTERVAL_MS = 15000;
@@ -23,6 +24,8 @@ void setup()
     gps_init();
     IMU_init();
     audio_init();
+    battery_init();
+
 }
 
 void loop()
@@ -68,19 +71,28 @@ void loop()
     AlertData alertData = alert_evaluate(fusedGpsData, imuData, audioData, 100);
 
     if (now - lastFusionDebugTime >= 1000) {
-    lastFusionDebugTime = now;
+        lastFusionDebugTime = now;
 
-    Serial.print("Fusion source=");
-    Serial.print((int)fusionData.locationSource);
-    Serial.print(" conf=");
-    Serial.print(fusionData.locationConfidence);
-    Serial.print(" valid=");
-    Serial.print(fusionData.locationValid);
-    Serial.print(" lat=");
-    Serial.print(fusionData.latitude, 6);
-    Serial.print(" lon=");
-    Serial.println(fusionData.longitude, 6);
+        Serial.print("Fusion source=");
+        Serial.print((int)fusionData.locationSource);
+        Serial.print(" conf=");
+        Serial.print(fusionData.locationConfidence);
+        Serial.print(" valid=");
+        Serial.print(fusionData.locationValid);
+        Serial.print(" lat=");
+        Serial.print(fusionData.latitude, 6);
+        Serial.print(" lon=");
+        Serial.println(fusionData.longitude, 6);
 }
+
+
+    BatteryData battery = battery_read();
+
+    Serial.print("Battery voltage: ");
+    Serial.print(battery.voltage, 2);
+    Serial.print(" V | Battery: ");
+    Serial.print(battery.percent);
+    Serial.println("%");
 
     bool periodicSend =
         now - lastSendTime >= SEND_INTERVAL_MS;
@@ -97,7 +109,7 @@ void loop()
     PacketData packetData;
     strcpy(packetData.callSign, CALL_SIGN);
     packetData.counter = ++counter;
-    packetData.battery = 100;
+    packetData.batteryPercent = battery.percent;
     packetData.gpsData = fusedGpsData;
     packetData.alertData = alertData;
     packetData.locationSource = fusionData.locationSource;
