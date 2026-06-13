@@ -25,6 +25,8 @@ void setup()
     IMU_init();
     audio_init();
     battery_init();
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
 
 }
 
