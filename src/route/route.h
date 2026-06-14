@@ -16,7 +16,7 @@ struct RouteData {
     bool warningActive;
 };
 
-RouteData route_update(const FusionData& fusionData);
+RouteData route_update(const FusionData& fusionData, bool allowLocalBuzzer );
 const char* route_statusToString(RouteStatus status);
 
 #endif

@@ -4,25 +4,53 @@
 #include <LoRa.h>
 #include "config.h"
 
+static bool loraReady = false;
 
-
-void lora_init()
+bool lora_init()
 {
     LoRa.setPins(LORA_CS, LORA_RST, LORA_INT);
+
     if (!LoRa.begin(LORA_FRQ))
     {
         Serial.println("LoRa FAIL");
-        while (true);
+        loraReady = false;
+        return false;
     
     }
-    Serial.println("LoRa OK");
     LoRa.setSpreadingFactor(LORA_SF);
     LoRa.setTxPower(20); // Setează puterea de transmisie (0-20 dBm)
+    
+    loraReady = true;
+    Serial.println("LoRa OK");
+    
+    return true;
 
 }
 
-bool lora_send(const char* message)
+bool lora_isReady()
 {
+    return loraReady;
+}
+
+
+bool lora_retryInit()
+{
+    if (loraReady) {
+        return true; // deja inițializat
+    }
+
+    Serial.println("Retrying LoRa initialization...");
+    return lora_init();
+}
+
+bool lora_send(const char* message)
+{   
+    if (!loraReady) {
+        Serial.println("LoRa unavailable. Packet not sent.");
+        return false;
+    }
+
+
     LoRa.beginPacket();
     LoRa.print(message); // Adaugă un mesaj la pachet
 
@@ -30,6 +58,7 @@ bool lora_send(const char* message)
 
     if (!sentSuccessfully) {
         Serial.println("Eroare transmitere LoRa");
+        loraReady = false; // Marchez LoRa ca nefuncțional pentru a încerca reinițializarea la următoarea trimitere
         return false;
     }
 

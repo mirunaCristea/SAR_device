@@ -1,8 +1,11 @@
 #include "route.h"
 #include "route_config.h"
 #include "config.h"
+
 #include <Arduino.h>
 #include <math.h>
+
+// ===================== CONFIGURARE TRASEU =====================
 
 static const float EARTH_RADIUS_M = 6371000.0f;
 
@@ -10,9 +13,74 @@ static const float OFF_ROUTE_THRESHOLD_M = 30.0f;
 static const float BACK_ON_ROUTE_THRESHOLD_M = 20.0f;
 static const int REQUIRED_OFF_ROUTE_COUNT = 3;
 
+// ===================== STARE TRASEU =====================
+
 static int offRouteCounter = 0;
 static bool warningActive = false;
+
+// ===================== STARE BUZZER =====================
+
+static bool buzzerActive = false;
 static bool buzzerAlreadyPlayed = false;
+
+static int buzzerStep = 0;
+static unsigned long lastBuzzerToggleTime = 0;
+
+static const unsigned long BUZZ_ON_MS = 200;
+static const unsigned long BUZZ_OFF_MS = 250;
+static const int BUZZ_TOTAL_STEPS = 6; 
+// 3 beep-uri = ON/OFF/ON/OFF/ON/OFF
+
+// ===================== FUNCTII AUXILIARE BUZZER =====================
+
+static void startBuzzerSequence()
+{
+    buzzerActive = true;
+    buzzerAlreadyPlayed = true;
+    buzzerStep = 0;
+    lastBuzzerToggleTime = millis();
+
+    digitalWrite(BUZZER_PIN, HIGH);
+}
+
+static void stopBuzzerSequence()
+{
+    buzzerActive = false;
+    buzzerStep = 0;
+    digitalWrite(BUZZER_PIN, LOW);
+}
+
+static void updateBuzzerSequence()
+{
+    if (!buzzerActive) {
+        return;
+    }
+
+    unsigned long now = millis();
+
+    bool buzzerIsCurrentlyOn = (buzzerStep % 2 == 0);
+    unsigned long interval = buzzerIsCurrentlyOn ? BUZZ_ON_MS : BUZZ_OFF_MS;
+
+    if (now - lastBuzzerToggleTime < interval) {
+        return;
+    }
+
+    lastBuzzerToggleTime = now;
+    buzzerStep++;
+
+    if (buzzerStep >= BUZZ_TOTAL_STEPS) {
+        stopBuzzerSequence();
+        return;
+    }
+
+    if (buzzerStep % 2 == 0) {
+        digitalWrite(BUZZER_PIN, HIGH);
+    } else {
+        digitalWrite(BUZZER_PIN, LOW);
+    }
+}
+
+// ===================== FUNCTII AUXILIARE TRASEU =====================
 
 static float degToRad(float deg)
 {
@@ -21,20 +89,15 @@ static float degToRad(float deg)
 
 static float clamp01(float value)
 {
-    if (value < 0.0f) return 0.0f;
-    if (value > 1.0f) return 1.0f;
-    return value;
-}
-
-static void buzzThreeTimes()
-{
-    for (int i = 0; i < 3; i++) {
-        digitalWrite(BUZZER_PIN, HIGH);
-        delay(200);
-
-        digitalWrite(BUZZER_PIN, LOW);
-        delay(250);
+    if (value < 0.0f) {
+        return 0.0f;
     }
+
+    if (value > 1.0f) {
+        return 1.0f;
+    }
+
+    return value;
 }
 
 static void latLonToXY(
@@ -106,13 +169,20 @@ static float distanceToRoute(float lat, float lon)
     return minDistance;
 }
 
-RouteData route_update(const FusionData& fusionData)
+// ===================== UPDATE PRINCIPAL TRASEU =====================
+
+RouteData route_update(
+    const FusionData& fusionData,
+    bool allowLocalBuzzer
+)
 {
+    updateBuzzerSequence();
+
     RouteData data;
 
     data.status = ROUTE_UNKNOWN;
     data.distanceToRouteM = 0.0f;
-    data.warningActive = false;
+    data.warningActive = warningActive;
 
     if (!fusionData.locationValid) {
         return data;
@@ -140,11 +210,11 @@ RouteData route_update(const FusionData& fusionData)
         offRouteCounter = 0;
         warningActive = false;
         buzzerAlreadyPlayed = false;
+        stopBuzzerSequence();
     }
 
-    if (warningActive && !buzzerAlreadyPlayed) {
-        buzzThreeTimes();
-        buzzerAlreadyPlayed = true;
+    if (warningActive && !buzzerAlreadyPlayed && allowLocalBuzzer) {
+        startBuzzerSequence();
     }
 
     data.warningActive = warningActive;
@@ -162,6 +232,8 @@ RouteData route_update(const FusionData& fusionData)
 
     return data;
 }
+
+// ===================== CONVERSIE STATUS IN TEXT =====================
 
 const char* route_statusToString(RouteStatus status)
 {
