@@ -6,13 +6,27 @@
 #include <SAR_Device_inferencing.h>
 #include <edge-impulse-sdk/dsp/numpy.hpp>
 
-static const float HELP_CANDIDATE_THRESHOLD = 0.75f;
-static const float HELP_MARGIN = 0.15f;
-static const float HELP_VERY_STRONG_THRESHOLD = 0.97f;
-static const float HELP_VERY_STRONG_MARGIN = 0.50f;
-static const uint8_t HELP_HISTORY_SIZE = 3;
-static const uint8_t HELP_REQUIRED_CANDIDATES = 2;
+// ===================== CONFIG DECIZIE PE FEREASTRA =====================
+
+// Fereastra candidata: intra in calculul procentului pe episod
+static const float HELP_CANDIDATE_THRESHOLD = 0.53f;
+static const float HELP_CANDIDATE_MARGIN = 0.08f;
+
+// Fereastra foarte sigura: poate valida episodul direct
+static const float HELP_STRONG_THRESHOLD = 0.95f;
+static const float HELP_STRONG_MARGIN = 0.70f;
+
 static const int PDM_GAIN = 127;
+
+// Overlap intre ferestre
+static const uint16_t AUDIO_OVERLAP_MS = 500;
+
+static const size_t AUDIO_OVERLAP_SAMPLES =
+    (EI_CLASSIFIER_FREQUENCY * AUDIO_OVERLAP_MS) / 1000;
+
+static const bool DEBUG_AUDIO_SCORES = true;
+
+// ===================== BUFFERE =====================
 
 static int16_t audioBuffer[EI_CLASSIFIER_RAW_SAMPLE_COUNT];
 static int16_t discardBuffer[256];
@@ -21,28 +35,36 @@ static volatile size_t samplesRead = 0;
 static volatile bool recording = false;
 static volatile bool recordingReady = false;
 
-static float helpScore = 0.0f;
-static bool helpDetected = false;
-static bool helpCandidateHistory[HELP_HISTORY_SIZE] = {false};
-static uint8_t helpHistoryIndex = 0;
-static uint8_t helpHistoryCount = 0;
+// ===================== REZULTAT =====================
 
-static void clearAudioResult() {
+static float helpScore = 0.0f;
+static bool helpCandidate = false;
+static bool helpStrong = false;
+
+// ===================== AUXILIARE =====================
+
+static void clearAudioResult()
+{
     helpScore = 0.0f;
-    helpDetected = false;
+    helpCandidate = false;
+    helpStrong = false;
 }
 
-static void flushPdmBuffer() {
+static void flushPdmBuffer()
+{
     while (PDM.available() > 0) {
         int bytesToRead = PDM.available();
+
         if (bytesToRead > (int)sizeof(discardBuffer)) {
             bytesToRead = sizeof(discardBuffer);
         }
+
         PDM.read(discardBuffer, bytesToRead);
     }
 }
 
-static void onPdmData() {
+static void onPdmData()
+{
     int bytesAvailable = PDM.available();
 
     if (bytesAvailable <= 0) {
@@ -54,15 +76,21 @@ static void onPdmData() {
         return;
     }
 
-    size_t remainingSamples = EI_CLASSIFIER_RAW_SAMPLE_COUNT - samplesRead;
-    int maxBytesToRead = remainingSamples * sizeof(int16_t);
+    size_t remainingSamples =
+        EI_CLASSIFIER_RAW_SAMPLE_COUNT - samplesRead;
+
+    int maxBytesToRead =
+        remainingSamples * sizeof(int16_t);
 
     int bytesToRead = bytesAvailable;
+
     if (bytesToRead > maxBytesToRead) {
         bytesToRead = maxBytesToRead;
     }
 
-    int bytesRead = PDM.read((uint8_t *)&audioBuffer[samplesRead], bytesToRead);
+    int bytesRead =
+        PDM.read((uint8_t *)&audioBuffer[samplesRead], bytesToRead);
+
     int newSamples = bytesRead / sizeof(int16_t);
 
     samplesRead += newSamples;
@@ -74,52 +102,35 @@ static void onPdmData() {
     }
 }
 
-static int getSignalData(size_t offset, size_t length, float *outPtr) {
+static int getSignalData(size_t offset, size_t length, float *outPtr)
+{
     numpy::int16_to_float(&audioBuffer[offset], outPtr, length);
     return 0;
 }
 
-static bool isHelpLabel(const char *label) {
-    return strcmp(label, "AJUTOR") == 0 || strcmp(label, "ajutor") == 0;
+static bool isHelpLabel(const char *label)
+{
+    return strcmp(label, "AJUTOR") == 0 ||
+           strcmp(label, "Ajutor") == 0 ||
+           strcmp(label, "ajutor") == 0 ||
+           strcmp(label, "HELP") == 0 ||
+           strcmp(label, "help") == 0;
 }
 
-static bool confirmHelpCandidate(bool candidateHelp) {
-    helpCandidateHistory[helpHistoryIndex] = candidateHelp;
-    helpHistoryIndex = (helpHistoryIndex + 1) % HELP_HISTORY_SIZE;
+// ===================== CLASIFICARE =====================
 
-    if (helpHistoryCount < HELP_HISTORY_SIZE) {
-        helpHistoryCount++;
-    }
-
-    uint8_t candidateCount = 0;
-
-    for (uint8_t i = 0; i < helpHistoryCount; i++) {
-        if (helpCandidateHistory[i]) {
-            candidateCount++;
-        }
-    }
-
-    return candidateCount >= HELP_REQUIRED_CANDIDATES;
-}
-
-static void clearHelpHistory() {
-    for (uint8_t i = 0; i < HELP_HISTORY_SIZE; i++) {
-        helpCandidateHistory[i] = false;
-    }
-
-    helpHistoryIndex = 0;
-    helpHistoryCount = 0;
-}
-
-static bool runAudioClassifier() {
+static bool runAudioClassifier()
+{
     clearAudioResult();
 
     signal_t signal;
     signal.total_length = EI_CLASSIFIER_RAW_SAMPLE_COUNT;
     signal.get_data = &getSignalData;
 
-    ei_impulse_result_t result = { 0 };
-    EI_IMPULSE_ERROR res = run_classifier(&signal, &result, false);
+    ei_impulse_result_t result = {0};
+
+    EI_IMPULSE_ERROR res =
+        run_classifier(&signal, &result, false);
 
     if (res != EI_IMPULSE_OK) {
         return false;
@@ -141,75 +152,138 @@ static bool runAudioClassifier() {
     float margin = helpScore - bestOtherScore;
     bool topIsHelp = helpScore > bestOtherScore;
 
-    bool veryStrongHelp =
-        topIsHelp &&
-        helpScore >= HELP_VERY_STRONG_THRESHOLD &&
-        margin >= HELP_VERY_STRONG_MARGIN;
-
-    bool candidateHelp =
+    helpCandidate =
         topIsHelp &&
         helpScore >= HELP_CANDIDATE_THRESHOLD &&
-        margin >= HELP_MARGIN;
+        margin >= HELP_CANDIDATE_MARGIN;
 
-    helpDetected =
-        veryStrongHelp ||
-        confirmHelpCandidate(candidateHelp);
+    helpStrong =
+        topIsHelp &&
+        helpScore >= HELP_STRONG_THRESHOLD &&
+        margin >= HELP_STRONG_MARGIN;
 
-    if (helpDetected) {
-        clearHelpHistory();
+    if (DEBUG_AUDIO_SCORES) {
+        Serial.print("HELP score=");
+        Serial.print(helpScore, 3);
+
+        Serial.print(" | bestOther=");
+        Serial.print(bestOtherScore, 3);
+
+        Serial.print(" | margin=");
+        Serial.print(margin, 3);
+
+        Serial.print(" | topIsHelp=");
+        Serial.print(topIsHelp ? "YES" : "NO");
+
+        Serial.print(" | candidate=");
+        Serial.print(helpCandidate ? "YES" : "NO");
+
+        Serial.print(" | strong=");
+        Serial.println(helpStrong ? "YES" : "NO");
     }
 
     return true;
 }
 
-bool audio_ml_init() {
-    helpScore = 0.0f;
-    helpDetected = false;
-    clearHelpHistory();
+// ===================== INIT =====================
+
+bool audio_ml_init()
+{
+    clearAudioResult();
+
+    samplesRead = 0;
+    recording = false;
+    recordingReady = false;
+
     PDM.onReceive(onPdmData);
     PDM.setBufferSize(4096);
     PDM.setGain(PDM_GAIN);
-    return PDM.begin(1, EI_CLASSIFIER_FREQUENCY);
 
+    return PDM.begin(1, EI_CLASSIFIER_FREQUENCY);
 }
 
-bool audio_ml_startCapture() {
+// ===================== OVERLAP =====================
+
+static void prepareNextOverlappedWindow(bool keepOverlap)
+{
+    recording = false;
+    recordingReady = false;
+
+    if (!keepOverlap ||
+        AUDIO_OVERLAP_SAMPLES == 0 ||
+        AUDIO_OVERLAP_SAMPLES >= EI_CLASSIFIER_RAW_SAMPLE_COUNT) {
+        samplesRead = 0;
+        return;
+    }
+
+    size_t startIndex =
+        EI_CLASSIFIER_RAW_SAMPLE_COUNT - AUDIO_OVERLAP_SAMPLES;
+
+    memmove(
+        audioBuffer,
+        &audioBuffer[startIndex],
+        AUDIO_OVERLAP_SAMPLES * sizeof(int16_t)
+    );
+
+    samplesRead = AUDIO_OVERLAP_SAMPLES;
+}
+
+// ===================== CAPTURA =====================
+
+bool audio_ml_startCapture()
+{
     if (recording || recordingReady) {
         return false;
     }
 
     flushPdmBuffer();
 
-    samplesRead = 0;
+    if (samplesRead >= EI_CLASSIFIER_RAW_SAMPLE_COUNT) {
+        samplesRead = 0;
+    }
+
     recordingReady = false;
     recording = true;
 
     return true;
 }
 
-bool audio_ml_captureReady() {
+bool audio_ml_captureReady()
+{
     return recordingReady;
 }
 
-bool audio_ml_process() {
+bool audio_ml_process()
+{
     if (!recordingReady) {
         return false;
     }
 
     bool classifierOk = runAudioClassifier();
-    recordingReady = false;
 
     if (!classifierOk) {
         clearAudioResult();
+        prepareNextOverlappedWindow(false);
+        return false;
     }
 
-    return classifierOk;
+    prepareNextOverlappedWindow(true);
+    return true;
 }
 
-float audio_ml_getHelpScore() {
+// ===================== GETTERE =====================
+
+float audio_ml_getHelpScore()
+{
     return helpScore;
 }
 
-bool audio_ml_isHelpDetected() {
-    return helpDetected;
+bool audio_ml_isHelpCandidate()
+{
+    return helpCandidate;
+}
+
+bool audio_ml_isHelpStrong()
+{
+    return helpStrong;
 }

@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-
 enum AudioState {
     AUDIO_NORMAL,
     AUDIO_HELP_DETECTED,
@@ -12,7 +11,12 @@ enum AudioState {
 
 struct AudioData {
     AudioState state = AUDIO_UNAVAILABLE;
+
     uint8_t helpScore = 0;
+
+    bool helpCandidate = false;
+    bool helpStrong = false;
+
     bool valid = false;
 };
 
