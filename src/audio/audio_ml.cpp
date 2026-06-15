@@ -8,17 +8,19 @@
 
 // ===================== CONFIG DECIZIE PE FEREASTRA =====================
 
-// Fereastra candidata: intra in calculul procentului pe episod
+// CANDIDATE = fereastra seamana moderat cu "ajutor"
+// Intra in calculul procentului din detectorul temporal.
 static const float HELP_CANDIDATE_THRESHOLD = 0.53f;
 static const float HELP_CANDIDATE_MARGIN = 0.08f;
 
-// Fereastra foarte sigura: poate valida episodul direct
+// STRONG = fereastra este foarte sigura.
+// Poate declansa alerta direct in detectorul temporal.
 static const float HELP_STRONG_THRESHOLD = 0.95f;
 static const float HELP_STRONG_MARGIN = 0.70f;
 
 static const int PDM_GAIN = 127;
 
-// Overlap intre ferestre
+// Overlap intre ferestre audio
 static const uint16_t AUDIO_OVERLAP_MS = 500;
 
 static const size_t AUDIO_OVERLAP_SAMPLES =
@@ -26,7 +28,7 @@ static const size_t AUDIO_OVERLAP_SAMPLES =
 
 static const bool DEBUG_AUDIO_SCORES = true;
 
-// ===================== BUFFERE =====================
+// ===================== BUFFERE AUDIO =====================
 
 static int16_t audioBuffer[EI_CLASSIFIER_RAW_SAMPLE_COUNT];
 static int16_t discardBuffer[256];
@@ -35,13 +37,13 @@ static volatile size_t samplesRead = 0;
 static volatile bool recording = false;
 static volatile bool recordingReady = false;
 
-// ===================== REZULTAT =====================
+// ===================== REZULTAT FEREASTRA =====================
 
 static float helpScore = 0.0f;
 static bool helpCandidate = false;
 static bool helpStrong = false;
 
-// ===================== AUXILIARE =====================
+// ===================== FUNCTII AUXILIARE =====================
 
 static void clearAudioResult()
 {

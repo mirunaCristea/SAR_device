@@ -46,13 +46,14 @@ bool audio_update(AudioData &data)
 
     float score = constrain(audio_ml_getHelpScore(), 0.0f, 1.0f);
 
-    data.helpScore = static_cast<uint8_t>(score * 100.0f + 0.5f);
+    data.helpScore =
+        static_cast<uint8_t>(score * 100.0f + 0.5f);
 
     data.helpCandidate = audio_ml_isHelpCandidate();
     data.helpStrong = audio_ml_isHelpStrong();
 
-    // Pentru compatibilitate: state devine HELP doar la strong.
-    // Pentru test folosim direct helpCandidate si helpStrong.
+    // Pentru compatibilitate cu restul proiectului.
+    // In testul realist folosim helpCandidate si helpStrong.
     data.state =
         data.helpStrong ? AUDIO_HELP_DETECTED : AUDIO_NORMAL;
 

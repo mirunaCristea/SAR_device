@@ -12,11 +12,14 @@ static const unsigned long POST_EVENT_OBSERVATION_MS = 3000;
 
 static const unsigned long PASSIVE_TEST_DURATION_MS = 60000;
 
-// Episod pozitiv / negativ detectat daca:
-// 1) exista cel putin o fereastra strong
-// SAU
-// 2) minimum 25% din ferestre sunt candidate
-static const float EVENT_HELP_RATIO_THRESHOLD = 0.25f;
+// Detector temporal glisant pentru deployment
+static const uint8_t DETECTOR_WINDOW_SIZE = 12;
+static const uint8_t DETECTOR_MIN_WINDOWS = 6;
+static const uint8_t DETECTOR_MIN_CANDIDATES = 3;
+static const float DETECTOR_CANDIDATE_RATIO = 0.25f;
+static const uint8_t DETECTOR_MIN_STRONG = 1;
+
+static const unsigned long DETECTOR_SUPPRESSION_MS = 7000;
 
 static const bool PRINT_NORMAL_WINDOWS = false;
 
@@ -55,25 +58,111 @@ static uint8_t falseAlarmCount = 0;
 
 static uint16_t audioWindowCount = 0;
 
-// Pentru episodul curent
+// Pentru episodul curent, doar pentru statistici
 static uint8_t eventWindowCount = 0;
 static uint8_t eventCandidateWindowCount = 0;
 static uint8_t eventStrongWindowCount = 0;
 
-// Pentru test pasiv
-static uint16_t passiveCandidateWindowCount = 0;
-static uint16_t passiveStrongWindowCount = 0;
-
-static bool firstHelpWindowSeen = false;
+static bool detectedThisEvent = false;
 
 static unsigned long phaseStartTime = 0;
 static unsigned long eventStartTime = 0;
 static unsigned long testStartTime = 0;
 
-static unsigned long firstDetectionDelayMs = 0;
-static unsigned long sumDetectionDelayMs = 0;
+static unsigned long firstAlertDelayMs = 0;
+static unsigned long sumAlertDelayMs = 0;
 
 static AudioData audioData;
+
+// ===================== DETECTOR CONTINUU =====================
+
+struct HelpDetectorStatus {
+    bool alertNow;
+    uint8_t candidateCount;
+    uint8_t strongCount;
+    uint8_t totalCount;
+    float candidateRatio;
+};
+
+static bool detectorCandidateBuffer[DETECTOR_WINDOW_SIZE];
+static bool detectorStrongBuffer[DETECTOR_WINDOW_SIZE];
+
+static uint8_t detectorIndex = 0;
+static uint8_t detectorCount = 0;
+
+static unsigned long lastDetectorAlertTime = 0;
+
+void detectorReset()
+{
+    for (uint8_t i = 0; i < DETECTOR_WINDOW_SIZE; i++) {
+        detectorCandidateBuffer[i] = false;
+        detectorStrongBuffer[i] = false;
+    }
+
+    detectorIndex = 0;
+    detectorCount = 0;
+    lastDetectorAlertTime = 0;
+}
+
+HelpDetectorStatus detectorUpdate(bool candidateHelp, bool strongHelp)
+{
+    HelpDetectorStatus status;
+
+    status.alertNow = false;
+    status.candidateCount = 0;
+    status.strongCount = 0;
+    status.totalCount = 0;
+    status.candidateRatio = 0.0f;
+
+    detectorCandidateBuffer[detectorIndex] = candidateHelp;
+    detectorStrongBuffer[detectorIndex] = strongHelp;
+
+    detectorIndex = (detectorIndex + 1) % DETECTOR_WINDOW_SIZE;
+
+    if (detectorCount < DETECTOR_WINDOW_SIZE) {
+        detectorCount++;
+    }
+
+    for (uint8_t i = 0; i < detectorCount; i++) {
+        if (detectorCandidateBuffer[i]) {
+            status.candidateCount++;
+        }
+
+        if (detectorStrongBuffer[i]) {
+            status.strongCount++;
+        }
+    }
+
+    status.totalCount = detectorCount;
+
+    if (status.totalCount > 0) {
+        status.candidateRatio =
+            status.candidateCount / (float)status.totalCount;
+    }
+
+    bool detectedByStrong =
+        status.strongCount >= DETECTOR_MIN_STRONG;
+
+    bool detectedByRatio =
+        status.totalCount >= DETECTOR_MIN_WINDOWS &&
+        status.candidateCount >= DETECTOR_MIN_CANDIDATES &&
+        status.candidateRatio >= DETECTOR_CANDIDATE_RATIO;
+
+    bool rawAlert =
+        detectedByStrong || detectedByRatio;
+
+    unsigned long now = millis();
+
+    bool suppressionActive =
+        now - lastDetectorAlertTime < DETECTOR_SUPPRESSION_MS;
+
+    if (rawAlert && !suppressionActive) {
+        status.alertNow = true;
+        lastDetectorAlertTime = now;
+    }
+
+    return status;
+}
 
 // ===================== MENIU =====================
 
@@ -81,16 +170,25 @@ void printMenu()
 {
     Serial.println();
     Serial.println("========================================");
-    Serial.println(" TEST AUDIO TinyML - COMENZI");
+    Serial.println(" TEST AUDIO TinyML - DETECTOR CONTINUU");
     Serial.println("========================================");
     Serial.println("1 / AJUTOR  -> test pe episoade: Ajutor");
     Serial.println("4 / AJUTATI -> test pe episoade: Ajutati-ma");
     Serial.println("2 / VORBIRE -> 60 s vorbire normala, fara ajutor");
     Serial.println("3 / ZGOMOT  -> 60 s zgomot ambiental, fara ajutor");
     Serial.println();
-    Serial.println("Serial Monitor:");
-    Serial.println("- Baud rate: 115200");
-    Serial.println("- Line ending: Newline sau Both NL & CR");
+    Serial.println("Detector:");
+    Serial.print("- ultimele ");
+    Serial.print(DETECTOR_WINDOW_SIZE);
+    Serial.println(" ferestre audio");
+    Serial.print("- alerta daca exista ");
+    Serial.print(DETECTOR_MIN_STRONG);
+    Serial.println(" fereastra STRONG");
+    Serial.print("- sau minimum ");
+    Serial.print(DETECTOR_MIN_CANDIDATES);
+    Serial.print(" ferestre CANDIDATE si raport >= ");
+    Serial.print(DETECTOR_CANDIDATE_RATIO * 100.0f, 1);
+    Serial.println("%");
     Serial.println("========================================");
     Serial.println();
 }
@@ -110,17 +208,16 @@ void resetStats()
     eventCandidateWindowCount = 0;
     eventStrongWindowCount = 0;
 
-    passiveCandidateWindowCount = 0;
-    passiveStrongWindowCount = 0;
-
-    firstHelpWindowSeen = false;
+    detectedThisEvent = false;
 
     phaseStartTime = 0;
     eventStartTime = 0;
     testStartTime = 0;
 
-    firstDetectionDelayMs = 0;
-    sumDetectionDelayMs = 0;
+    firstAlertDelayMs = 0;
+    sumAlertDelayMs = 0;
+
+    detectorReset();
 }
 
 // ===================== START TESTE =====================
@@ -148,23 +245,8 @@ void startHelpScenario(const char* name)
     Serial.println(NUM_EVENTS);
 
     Serial.println();
-    Serial.println("Fiecare episod are:");
-    Serial.print("- ");
-    Serial.print(PRE_EVENT_PAUSE_MS / 1000);
-    Serial.println(" s pauza");
-    Serial.print("- ");
-    Serial.print(EVENT_DURATION_MS / 1000);
-    Serial.println(" s apel vocal");
-    Serial.print("- ");
-    Serial.print(POST_EVENT_OBSERVATION_MS / 1000);
-    Serial.println(" s observare");
-
-    Serial.println();
-    Serial.println("Episod detectat daca:");
-    Serial.println("- exista minimum o fereastra STRONG");
-    Serial.print("- SAU minimum ");
-    Serial.print(EVENT_HELP_RATIO_THRESHOLD * 100.0f, 1);
-    Serial.println("% din ferestre sunt CANDIDATE");
+    Serial.println("Aceeasi logica de detector este folosita si pentru");
+    Serial.println("ajutor, si pentru vorbire normala, si pentru zgomot.");
 
     Serial.println("========================================");
 }
@@ -192,15 +274,9 @@ void startPassiveScenario(const char* name)
     Serial.print("Durata: ");
     Serial.print(PASSIVE_TEST_DURATION_MS / 1000);
     Serial.println(" s");
-
     Serial.println();
-    Serial.println("Testul pasiv este tratat ca un episod negativ.");
-    Serial.println("Alarma falsa finala apare daca:");
-    Serial.println("- exista minimum o fereastra STRONG");
-    Serial.print("- SAU minimum ");
-    Serial.print(EVENT_HELP_RATIO_THRESHOLD * 100.0f, 1);
-    Serial.println("% din ferestre sunt CANDIDATE");
-
+    Serial.println("Detectorul ruleaza continuu, exact ca in deployment.");
+    Serial.println("Daca detectorul declanseaza, este alarma falsa.");
     Serial.println("========================================");
 }
 
@@ -209,6 +285,9 @@ void startPassiveScenario(const char* name)
 void processAudioWindow(bool candidateHelp, bool strongHelp, uint8_t score)
 {
     audioWindowCount++;
+
+    HelpDetectorStatus detectorStatus =
+        detectorUpdate(candidateHelp, strongHelp);
 
     bool insideHelpEvent =
         testMode == MODE_HELP_EVENTS &&
@@ -224,84 +303,51 @@ void processAudioWindow(bool candidateHelp, bool strongHelp, uint8_t score)
         if (strongHelp) {
             eventStrongWindowCount++;
         }
-
-        if ((candidateHelp || strongHelp) && !firstHelpWindowSeen) {
-            firstHelpWindowSeen = true;
-            firstDetectionDelayMs = millis() - eventStartTime;
-
-            Serial.println();
-            Serial.println(">>> PRIMA FEREASTRA HELP IN EPISOD");
-            Serial.print("Eveniment: ");
-            Serial.print(eventCount);
-            Serial.print("/");
-            Serial.println(NUM_EVENTS);
-
-            Serial.print("Scor HELP: ");
-            Serial.print(score);
-            Serial.println("%");
-
-            Serial.print("Tip fereastra: ");
-            Serial.println(strongHelp ? "STRONG" : "CANDIDATE");
-
-            Serial.print("Timp pana la prima fereastra HELP: ");
-            Serial.print(firstDetectionDelayMs);
-            Serial.println(" ms");
-        }
-
-        return;
     }
 
-    if (testMode == MODE_PASSIVE_NO_HELP) {
-        if (candidateHelp) {
-            passiveCandidateWindowCount++;
-        }
-
-        if (strongHelp) {
-            passiveStrongWindowCount++;
-        }
-
-        if (PRINT_NORMAL_WINDOWS && !candidateHelp && !strongHelp) {
-            Serial.print(".");
-        }
-
-        return;
-    }
-
-    // Pauza dintre evenimentele de ajutor
-    if (strongHelp) {
+    if (detectorStatus.alertNow) {
         Serial.println();
-        Serial.println("!!! FEREASTRA STRONG IN PAUZA");
-        Serial.print("Scor HELP: ");
+        Serial.println(">>> ALERTA HELP DECLANSATA");
+        Serial.print("Scor fereastra curenta: ");
         Serial.print(score);
         Serial.println("%");
-    } else if (PRINT_NORMAL_WINDOWS) {
-        Serial.print(".");
+
+        Serial.print("Buffer detector: ");
+        Serial.print(detectorStatus.candidateCount);
+        Serial.print(" candidate / ");
+        Serial.print(detectorStatus.strongCount);
+        Serial.print(" strong / ");
+        Serial.print(detectorStatus.totalCount);
+        Serial.println(" total");
+
+        Serial.print("Raport candidate: ");
+        Serial.print(detectorStatus.candidateRatio * 100.0f, 1);
+        Serial.println("%");
+
+        if (insideHelpEvent) {
+            if (!detectedThisEvent) {
+                detectedThisEvent = true;
+
+                firstAlertDelayMs = millis() - eventStartTime;
+
+                Serial.print("Eveniment ");
+                Serial.print(eventCount);
+                Serial.println(" marcat ca DETECTAT.");
+
+                Serial.print("Timp pana la alerta: ");
+                Serial.print(firstAlertDelayMs);
+                Serial.println(" ms");
+            }
+        } else {
+            falseAlarmCount++;
+
+            Serial.println("!!! ALARMA FALSA");
+        }
+    } else {
+        if (PRINT_NORMAL_WINDOWS) {
+            Serial.print(".");
+        }
     }
-}
-
-// ===================== DECIZIE EPISOD =====================
-
-bool decideEpisode(
-    uint16_t totalWindows,
-    uint16_t candidateWindows,
-    uint16_t strongWindows,
-    float &candidateRatio
-)
-{
-    candidateRatio = 0.0f;
-
-    if (totalWindows > 0) {
-        candidateRatio = candidateWindows / (float)totalWindows;
-    }
-
-    bool detectedByStrong =
-        strongWindows >= 1;
-
-    bool detectedByRatio =
-        totalWindows > 0 &&
-        candidateRatio >= EVENT_HELP_RATIO_THRESHOLD;
-
-    return detectedByStrong || detectedByRatio;
 }
 
 // ===================== REZUMAT =====================
@@ -344,9 +390,9 @@ void printSummary()
 
         if (detectedEvents > 0) {
             float avgDelay =
-                sumDetectionDelayMs / (float)detectedEvents;
+                sumAlertDelayMs / (float)detectedEvents;
 
-            Serial.print("Timp mediu pana la prima fereastra HELP: ");
+            Serial.print("Timp mediu pana la alerta: ");
             Serial.print(avgDelay, 1);
             Serial.println(" ms");
         }
@@ -356,30 +402,8 @@ void printSummary()
     }
 
     if (testMode == MODE_PASSIVE_NO_HELP) {
-        float ratio = 0.0f;
-
-        bool passiveFalseAlarm =
-            decideEpisode(
-                audioWindowCount,
-                passiveCandidateWindowCount,
-                passiveStrongWindowCount,
-                ratio
-            );
-
-        falseAlarmCount = passiveFalseAlarm ? 1 : 0;
-
-        Serial.print("Ferestre CANDIDATE false: ");
-        Serial.println(passiveCandidateWindowCount);
-
-        Serial.print("Ferestre STRONG false: ");
-        Serial.println(passiveStrongWindowCount);
-
-        Serial.print("Procent ferestre CANDIDATE false: ");
-        Serial.print(ratio * 100.0f, 1);
-        Serial.println("%");
-
-        Serial.print("Alarma falsa finala: ");
-        Serial.println(passiveFalseAlarm ? "DA" : "NU");
+        Serial.print("Alarme false finale: ");
+        Serial.println(falseAlarmCount);
     }
 
     Serial.println("========================================");
@@ -406,8 +430,8 @@ void updateHelpScenarioTiming()
             eventCandidateWindowCount = 0;
             eventStrongWindowCount = 0;
 
-            firstHelpWindowSeen = false;
-            firstDetectionDelayMs = 0;
+            detectedThisEvent = false;
+            firstAlertDelayMs = 0;
 
             eventStartTime = now;
             phaseStartTime = now;
@@ -441,36 +465,18 @@ void updateHelpScenarioTiming()
 
     else if (testPhase == POST_EVENT_OBSERVATION) {
         if (now - phaseStartTime >= POST_EVENT_OBSERVATION_MS) {
-            float ratio = 0.0f;
-
-            bool eventDetected =
-                decideEpisode(
-                    eventWindowCount,
-                    eventCandidateWindowCount,
-                    eventStrongWindowCount,
-                    ratio
-                );
-
             Serial.print("Ferestre in episod: ");
             Serial.println(eventWindowCount);
 
-            Serial.print("Ferestre CANDIDATE: ");
+            Serial.print("Ferestre CANDIDATE in episod: ");
             Serial.println(eventCandidateWindowCount);
 
-            Serial.print("Ferestre STRONG: ");
+            Serial.print("Ferestre STRONG in episod: ");
             Serial.println(eventStrongWindowCount);
 
-            Serial.print("Procent CANDIDATE: ");
-            Serial.print(ratio * 100.0f, 1);
-            Serial.println("%");
-
-            if (eventDetected) {
+            if (detectedThisEvent) {
                 detectedEvents++;
-
-                if (firstHelpWindowSeen) {
-                    sumDetectionDelayMs += firstDetectionDelayMs;
-                }
-
+                sumAlertDelayMs += firstAlertDelayMs;
                 Serial.println("Rezultat eveniment: DETECTAT");
             } else {
                 missedEvents++;
