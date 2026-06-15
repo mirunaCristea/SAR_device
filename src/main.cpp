@@ -86,14 +86,39 @@ static bool is_imu_critical_window()
 static void update_audio()
 {
     if (is_imu_critical_window()) {
+        audio_reset_detector();
         return;
     }
 
-    if (audio_update(audioData)) {
-        Serial.print("Audio: ");
-        Serial.print(audioData.state == AUDIO_HELP_DETECTED ? "HELP" : "NORMAL");
-        Serial.print(" | score=");
-        Serial.println(audioData.helpScore);
+    if (!audio_update(audioData)) {
+        return;
+    }
+
+    if (audioData.state == AUDIO_HELP_DETECTED) {
+        Serial.println();
+        Serial.println(">>> ALERTA AUDIO HELP");
+
+        Serial.print("Score=");
+        Serial.print(audioData.helpScore);
+        Serial.print("%");
+
+        Serial.print(" | candidate=");
+        Serial.print(audioData.helpCandidate ? "YES" : "NO");
+
+        Serial.print(" | strong=");
+        Serial.print(audioData.helpStrong ? "YES" : "NO");
+
+        Serial.print(" | detector=");
+        Serial.print(audioData.detectorCandidateCount);
+        Serial.print("C/");
+        Serial.print(audioData.detectorStrongCount);
+        Serial.print("S/");
+        Serial.print(audioData.detectorWindowCount);
+        Serial.print("T");
+
+        Serial.print(" | ratio=");
+        Serial.print(audioData.detectorCandidateRatioPercent);
+        Serial.println("%");
     }
 }
 
@@ -158,8 +183,24 @@ static void print_debug(
     Serial.print(" m | Battery=");
     Serial.print(batteryData.percent);
 
+    Serial.print("%");
+
+    Serial.print(" | Audio=");
+    Serial.print(audioData.state == AUDIO_HELP_DETECTED ? "HELP" : "NORMAL");
+
+    Serial.print(" C=");
+    Serial.print(audioData.detectorCandidateCount);
+
+    Serial.print(" S=");
+    Serial.print(audioData.detectorStrongCount);
+
+    Serial.print(" T=");
+    Serial.print(audioData.detectorWindowCount);
+
+    Serial.print(" R=");
+    Serial.print(audioData.detectorCandidateRatioPercent);
     Serial.println("%");
-}
+    }
 
 static GpsData build_fused_GpsData(
     const GpsData& gpsData,
