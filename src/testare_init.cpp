@@ -161,4 +161,13 @@ void loop()
 {
     // Testul este one-shot.
     // Nu rulam bucla continua ca sa fie screenshot-ul curat.
+
+
+    batteryData = battery_read();
+    Serial.print("[BATERIE] tensiune=");
+    Serial.print(batteryData.voltage, 2);
+    Serial.print(" V | procent=");
+    Serial.print(batteryData.percent);
+    Serial.println("%");
+    delay(10000);
 }

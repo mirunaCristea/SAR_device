@@ -3,9 +3,9 @@
 
 #define BATTERY_PIN A1
 
-static const float ADC_REF_V = 3.19f;
+static const float ADC_REF_V = 3.2f;
 static const int ADC_BITS = 12;
-static const int ADC_MAX = (1 << ADC_BITS) - 1;
+static const int ADC_MAX = 4096;
 
 // Schema ta: R18 = 4.7k, R17 = 4.7k
 static const float R_TOP = 4700.0f;
@@ -30,7 +30,6 @@ static float read_battery_voltage()
 
     float v_adc = raw * ADC_REF_V / ADC_MAX;
 
-    // Reconstruiește tensiunea reală a bateriei
     float v_bat = v_adc * (R_TOP + R_BOTTOM) / R_BOTTOM;
 
     return v_bat;
