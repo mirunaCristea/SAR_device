@@ -1,23 +1,30 @@
 #ifndef PACKET_H
 #define PACKET_H
+
 #include <Arduino.h>
+
 #include "config.h"
 #include "gps/gps.h"
-#include "imu/imu.h"
 #include "alert/alert.h"
 #include "fusion/fusion.h"
-#include "power/power.h"
+
+// Aceasta reunește informațiile esențiale care trebuie transmise către beacon.
 struct PacketData {
     char callSign[10];
     long counter;
     uint8_t batteryPercent;
 
-    GpsData gpsData; // pt TIME
-    AlertData alertData; // pt eventType si alertLevel
-    FusionData fusionData; // pt pozitia finala + locationSource
+    // Timpul GPS este preluat din structura GpsData.
+    GpsData gpsData;
 
+    // Nivelul alertei și tipul evenimentului sunt preluate din AlertData.
+    AlertData alertData;
+
+    // Poziția finală validată și sursa acesteia sunt preluate din FusionData.
+    FusionData fusionData;
 };
 
 String packet_build(PacketData data);
 
 #endif // PACKET_H
+

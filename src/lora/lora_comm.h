@@ -1,10 +1,17 @@
 #ifndef LORA_COMM_H
 #define LORA_COMM_H
-bool lora_init();
-bool lora_send(const char* message); //nu aloca memorie dinamică, folosește un buffer prealocat; mai eficient dpdv al memoriei și performanței
 
+// Inițializează modulul LoRa și configurează parametrii radio principali.
+bool lora_init();
+
+// Transmite un mesaj deja construit prin interfața LoRa.
+bool lora_send(const char* message);
+
+// Indică dacă modulul LoRa este disponibil pentru transmitere.
 bool lora_isReady();
+
+// Reîncearcă inițializarea modulului LoRa în cazul funcționării degradate.
 bool lora_retryInit();
 
-
 #endif // LORA_COMM_H
+

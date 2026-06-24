@@ -2,13 +2,16 @@
 
 #include <Arduino.h>
 
+// Ferestre temporale în care evenimentele rămân relevante pentru alertare.
 static const unsigned long FALL_MEMORY_MS = 3UL * 60UL * 1000UL;
 static const unsigned long HELP_MEMORY_MS = 60UL * 1000UL;
 
+// Memorarea evenimentelor recente, pentru a permite combinarea lor logică.
 static bool fallMemoryActive = false;
 static bool helpMemoryActive = false;
 static bool pendingLowBattery = false;
 
+// Indicatori folosiți pentru a evita transmiterea repetată a aceleiași alerte.
 static bool fallSent = false;
 static bool helpSent = false;
 static bool fallAndHelpSent = false;
@@ -20,6 +23,7 @@ static bool helpWasActive = false;
 static bool lowBatteryWasActive = false;
 
 /*
+Prioritatea alertelor:
 fall + help     -> nivel 4
 fall            -> nivel 4
 help            -> nivel 3
@@ -27,7 +31,11 @@ low battery     -> nivel 2
 normal          -> nivel 0
 */
 
-static bool is_recent(unsigned long now, unsigned long eventTime, unsigned long windowMs)
+static bool is_recent(
+    unsigned long now,
+    unsigned long eventTime,
+    unsigned long windowMs
+)
 {
     return now - eventTime <= windowMs;
 }
@@ -39,6 +47,8 @@ static void update_event_memory(
     int battery
 )
 {
+    // O cădere detectată este memorată temporar pentru alertare
+    // și pentru posibila asociere cu un eveniment audio ulterior.
     if (imuData.fallFlag) {
         fallMemoryActive = true;
         lastFallTime = now;
@@ -50,6 +60,8 @@ static void update_event_memory(
         audioData.valid &&
         audioData.state == AUDIO_HELP_DETECTED;
 
+    // Evenimentul audio este memorat doar la tranziția către stare activă,
+    // pentru a evita retriggerarea continuă pe ferestre consecutive.
     if (helpDetected && !helpWasActive) {
         helpMemoryActive = true;
         lastHelpTime = now;
@@ -61,6 +73,7 @@ static void update_event_memory(
 
     bool lowBattery = battery < 20;
 
+    // Alerta de baterie este declanșată doar la intrarea sub prag.
     if (lowBattery && !lowBatteryWasActive) {
         pendingLowBattery = true;
     }
@@ -70,6 +83,7 @@ static void update_event_memory(
 
 static void expire_old_events(unsigned long now)
 {
+    // Evenimentele memorate sunt șterse după expirarea ferestrei temporale.
     if (fallMemoryActive && !is_recent(now, lastFallTime, FALL_MEMORY_MS)) {
         fallMemoryActive = false;
         fallSent = false;
@@ -83,7 +97,12 @@ static void expire_old_events(unsigned long now)
     }
 }
 
-AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, int battery)
+AlertData alert_evaluate(
+    GpsData gpsData,
+    IMUdata imuData,
+    AudioData audioData,
+    int battery
+)
 {
     AlertData alertData;
 
@@ -104,6 +123,8 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, 
         helpMemoryActive &&
         is_recent(now, lastHelpTime, HELP_MEMORY_MS);
 
+    // Dacă apelul de ajutor apare după o cădere deja transmisă,
+    // sistemul actualizează severitatea printr-un eveniment combinat.
     bool helpDetectedAfterFall =
         recentFall &&
         recentHelp &&
@@ -116,6 +137,7 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, 
         return alertData;
     }
 
+    // Căderea are prioritate maximă și este transmisă imediat.
     if (recentFall && !fallSent) {
         alertData.alertLevel = 4;
         alertData.eventType =
@@ -124,6 +146,7 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, 
         return alertData;
     }
 
+    // Apelul de ajutor este tratat ca alertă critică, dar cu nivel mai mic decât căderea.
     if (recentHelp && !helpSent) {
         alertData.alertLevel = 3;
         alertData.eventType = EVENT_AUDIO_DISTRESS;
@@ -131,6 +154,7 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, 
         return alertData;
     }
 
+    // Bateria scăzută este transmisă ca alertă de stare, nu ca eveniment critic major.
     if (pendingLowBattery) {
         alertData.alertLevel = 2;
         alertData.eventType = EVENT_LOW_BATTERY;
@@ -143,6 +167,8 @@ AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, 
 
 void alert_markSent(EventType eventType)
 {
+    // După transmiterea cu succes, evenimentul este marcat ca trimis
+    // pentru a preveni retransmiterea continuă în bucla principală.
     switch (eventType) {
         case EVENT_FALL_DETECTED:
         case EVENT_FALL_NO_GPS:

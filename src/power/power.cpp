@@ -3,11 +3,12 @@
 
 #define BATTERY_PIN A1
 
+// Parametri utilizați pentru conversia valorii ADC în tensiune.
 static const float ADC_REF_V = 3.19f;
 static const int ADC_BITS = 12;
 static const int ADC_MAX = (1 << ADC_BITS) - 1;
 
-// Schema ta: R18 = 4.7k, R17 = 4.7k
+// Valorile divizorului rezistiv folosit pentru măsurarea tensiunii bateriei.
 static const float R_TOP = 4700.0f;
 static const float R_BOTTOM = 4700.0f;
 
@@ -21,6 +22,7 @@ static float read_battery_voltage()
     const int samples = 20;
     long sum = 0;
 
+    // Se mediază mai multe citiri ADC pentru reducerea fluctuațiilor de măsurare.
     for (int i = 0; i < samples; i++) {
         sum += analogRead(BATTERY_PIN);
         delay(2);
@@ -28,9 +30,10 @@ static float read_battery_voltage()
 
     float raw = sum / (float)samples;
 
+    // Conversia valorii ADC în tensiunea măsurată pe pinul analogic.
     float v_adc = raw * ADC_REF_V / ADC_MAX;
 
-    // Reconstruiește tensiunea reală a bateriei
+    // Reconstruirea tensiunii reale a bateriei pe baza raportului divizorului rezistiv.
     float v_bat = v_adc * (R_TOP + R_BOTTOM) / R_BOTTOM;
 
     return v_bat;
@@ -38,6 +41,7 @@ static float read_battery_voltage()
 
 static int estimate_battery_percent(float vbat)
 {
+    // Estimare aproximativă a nivelului bateriei, pe baza tensiunii măsurate.
     if (vbat >= 4.20f) return 100;
     if (vbat >= 4.10f) return 90;
     if (vbat >= 4.00f) return 80;

@@ -1,5 +1,6 @@
 #include "audio_ml.h"
 
+#include <Arduino.h>
 #include <PDM.h>
 #include <string.h>
 
@@ -8,19 +9,18 @@
 
 // ===================== CONFIG DECIZIE PE FEREASTRA =====================
 
-// CANDIDATE = fereastra seamana moderat cu "ajutor"
-// Intra in calculul procentului din detectorul temporal.
+// Praguri pentru o detecție posibilă a apelului de ajutor.
 static const float HELP_CANDIDATE_THRESHOLD = 0.53f;
 static const float HELP_CANDIDATE_MARGIN = 0.08f;
 
-// STRONG = fereastra este foarte sigura.
-// Poate declansa alerta direct in detectorul temporal.
+// Praguri pentru o detecție puternică, cu încredere mai mare.
 static const float HELP_STRONG_THRESHOLD = 0.95f;
 static const float HELP_STRONG_MARGIN = 0.70f;
 
 static const int PDM_GAIN = 127;
 
-// Overlap intre ferestre audio
+// Suprapunere între ferestrele audio consecutive, pentru a reduce riscul
+// de a pierde un apel de ajutor aflat la limita dintre două ferestre.
 static const uint16_t AUDIO_OVERLAP_MS = 500;
 
 static const size_t AUDIO_OVERLAP_SAMPLES =
@@ -30,9 +30,11 @@ static const bool DEBUG_AUDIO_SCORES = true;
 
 // ===================== BUFFERE AUDIO =====================
 
+// Bufferul principal conține fereastra audio folosită la inferență.
 static int16_t audioBuffer[EI_CLASSIFIER_RAW_SAMPLE_COUNT];
 static int16_t discardBuffer[256];
 
+// Variabile actualizate și din callback-ul PDM.
 static volatile size_t samplesRead = 0;
 static volatile bool recording = false;
 static volatile bool recordingReady = false;
@@ -65,6 +67,7 @@ static void flushPdmBuffer()
     }
 }
 
+// Callback apelat automat când sunt disponibile date noi de la microfonul PDM.
 static void onPdmData()
 {
     int bytesAvailable = PDM.available();
@@ -104,6 +107,7 @@ static void onPdmData()
     }
 }
 
+// Funcție cerută de Edge Impulse pentru accesarea datelor audio din buffer.
 static int getSignalData(size_t offset, size_t length, float *outPtr)
 {
     numpy::int16_to_float(&audioBuffer[offset], outPtr, length);
@@ -140,13 +144,15 @@ static bool runAudioClassifier()
 
     float bestOtherScore = 0.0f;
 
+    // Se extrage scorul clasei de ajutor și cel mai mare scor al celorlalte clase.
     for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
         const char *label = result.classification[i].label;
         float value = result.classification[i].value;
 
         if (isHelpLabel(label)) {
             helpScore = value;
-        } else if (value > bestOtherScore) {
+        }
+        else if (value > bestOtherScore) {
             bestOtherScore = value;
         }
     }
@@ -154,11 +160,13 @@ static bool runAudioClassifier()
     float margin = helpScore - bestOtherScore;
     bool topIsHelp = helpScore > bestOtherScore;
 
+    // Candidate indică o detecție posibilă, utilă pentru confirmare temporală.
     helpCandidate =
         topIsHelp &&
         helpScore >= HELP_CANDIDATE_THRESHOLD &&
         margin >= HELP_CANDIDATE_MARGIN;
 
+    // Strong indică o detecție cu încredere ridicată.
     helpStrong =
         topIsHelp &&
         helpScore >= HELP_STRONG_THRESHOLD &&
@@ -197,6 +205,7 @@ bool audio_ml_init()
     recording = false;
     recordingReady = false;
 
+    // Configurarea microfonului PDM pentru achiziția ferestrelor audio.
     PDM.onReceive(onPdmData);
     PDM.setBufferSize(4096);
     PDM.setGain(PDM_GAIN);
@@ -221,6 +230,8 @@ static void prepareNextOverlappedWindow(bool keepOverlap)
     size_t startIndex =
         EI_CLASSIFIER_RAW_SAMPLE_COUNT - AUDIO_OVERLAP_SAMPLES;
 
+    // Ultima parte a ferestrei curente este păstrată ca început
+    // pentru următoarea fereastră audio.
     memmove(
         audioBuffer,
         &audioBuffer[startIndex],

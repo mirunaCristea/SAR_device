@@ -7,8 +7,10 @@
 
 // ===================== CONFIGURARE TRASEU =====================
 
+// Parametri utilizați pentru aproximarea locală a distanței față de traseu.
 static const float EARTH_RADIUS_M = 6371000.0f;
 
+// ieșirea de pe traseu se confirmă peste 30 m, iar revenirea este considerată validă sub 20 m.
 static const float OFF_ROUTE_THRESHOLD_M = 30.0f;
 static const float BACK_ON_ROUTE_THRESHOLD_M = 20.0f;
 static const int REQUIRED_OFF_ROUTE_COUNT = 3;
@@ -20,6 +22,8 @@ static bool warningActive = false;
 
 // ===================== STARE BUZZER =====================
 
+// Secvența buzzer-ului este implementată non-blocant, folosind millis(),
+// pentru a nu opri citirea senzorilor sau transmiterea LoRa.
 static bool buzzerActive = false;
 static bool buzzerAlreadyPlayed = false;
 
@@ -28,8 +32,7 @@ static unsigned long lastBuzzerToggleTime = 0;
 
 static const unsigned long BUZZ_ON_MS = 200;
 static const unsigned long BUZZ_OFF_MS = 250;
-static const int BUZZ_TOTAL_STEPS = 6; 
-// 3 beep-uri = ON/OFF/ON/OFF/ON/OFF
+static const int BUZZ_TOTAL_STEPS = 6; // 3 beep-uri: ON/OFF/ON/OFF/ON/OFF
 
 // ===================== FUNCTII AUXILIARE BUZZER =====================
 
@@ -73,11 +76,7 @@ static void updateBuzzerSequence()
         return;
     }
 
-    if (buzzerStep % 2 == 0) {
-        digitalWrite(BUZZER_PIN, HIGH);
-    } else {
-        digitalWrite(BUZZER_PIN, LOW);
-    }
+    digitalWrite(BUZZER_PIN, buzzerStep % 2 == 0 ? HIGH : LOW);
 }
 
 // ===================== FUNCTII AUXILIARE TRASEU =====================
@@ -100,6 +99,8 @@ static float clamp01(float value)
     return value;
 }
 
+// Conversie locală latitudine-longitudine în coordonate plane.
+// Aproximarea este suficientă pentru segmente scurte de traseu.
 static void latLonToXY(
     float originLat,
     float originLon,
@@ -118,6 +119,7 @@ static void latLonToXY(
     y = EARTH_RADIUS_M * dLat;
 }
 
+// Calculează distanța dintre poziția curentă și un segment al traseului.
 static float distancePointToSegment(
     float pLat,
     float pLon,
@@ -149,6 +151,7 @@ static float distancePointToSegment(
     return sqrt(dx * dx + dy * dy);
 }
 
+// Distanța față de traseu este cea mai mică distanță față de segmentele definite.
 static float distanceToRoute(float lat, float lon)
 {
     float minDistance = 999999.0f;
@@ -184,6 +187,7 @@ RouteData route_update(
     data.distanceToRouteM = 0.0f;
     data.warningActive = warningActive;
 
+    // Traseul este evaluat doar când există o poziție curentă GPS acceptată.
     if (!fusionData.locationValid) {
         return data;
     }
@@ -199,6 +203,8 @@ RouteData route_update(
 
     data.distanceToRouteM = distance;
 
+    // Confirmarea ieșirii de pe traseu cere mai multe citiri consecutive,
+    // pentru a reduce alarmele false cauzate de erori GPS punctuale.
     if (distance > OFF_ROUTE_THRESHOLD_M) {
         offRouteCounter++;
 
