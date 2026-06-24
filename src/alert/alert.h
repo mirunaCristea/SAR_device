@@ -21,6 +21,6 @@ struct AlertData {
 };
 
 AlertData alert_evaluate(GpsData gpsData, IMUdata imuData, AudioData audioData, int battery);
-void alert_clearPending();
+void alert_markSent(EventType eventType);
 
 #endif // ALERT_H

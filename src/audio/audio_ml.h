@@ -7,7 +7,10 @@ bool audio_ml_init();
 bool audio_ml_startCapture();
 bool audio_ml_captureReady();
 bool audio_ml_process();
+
 float audio_ml_getHelpScore();
-bool audio_ml_isHelpDetected();
+
+bool audio_ml_isHelpCandidate();
+bool audio_ml_isHelpStrong();
 
 #endif

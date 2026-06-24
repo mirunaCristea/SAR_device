@@ -10,6 +10,8 @@ static void setUnavailable(AudioData &data)
 {
     data.state = AUDIO_UNAVAILABLE;
     data.helpScore = 0;
+    data.helpCandidate = false;
+    data.helpStrong = false;
     data.valid = false;
 }
 
@@ -44,9 +46,17 @@ bool audio_update(AudioData &data)
 
     float score = constrain(audio_ml_getHelpScore(), 0.0f, 1.0f);
 
+    data.helpScore =
+        static_cast<uint8_t>(score * 100.0f + 0.5f);
+
+    data.helpCandidate = audio_ml_isHelpCandidate();
+    data.helpStrong = audio_ml_isHelpStrong();
+
+    // Pentru compatibilitate cu restul proiectului.
+    // In testul realist folosim helpCandidate si helpStrong.
     data.state =
-        audio_ml_isHelpDetected() ? AUDIO_HELP_DETECTED : AUDIO_NORMAL;
-    data.helpScore = static_cast<uint8_t>(score * 100.0f + 0.5f);
+        data.helpStrong ? AUDIO_HELP_DETECTED : AUDIO_NORMAL;
+
     data.valid = true;
 
     return true;

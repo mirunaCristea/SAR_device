@@ -14,10 +14,10 @@
 // ===================== TIMING =====================
 
 static const unsigned long IMU_INTERVAL_MS = 10;
-static const unsigned long SEND_INTERVAL_MS = 15000;
+static const unsigned long SEND_INTERVAL_MS = 5000;
 static const unsigned long SEND_RETRY_INTERVAL_MS = 5000;
-static const unsigned long LORA_RETRY_INTERVAL_MS = 30000;
-static const unsigned long BATTERY_READ_INTERVAL_MS = 15000;
+static const unsigned long LORA_RETRY_INTERVAL_MS = 15000;
+static const unsigned long BATTERY_READ_INTERVAL_MS = 5000;
 static const unsigned long DEBUG_INTERVAL_MS = 1000;
 
 // ===================== STATE =====================
@@ -184,7 +184,11 @@ static bool should_try_send(
     bool periodicSend = now - lastSendTime >= SEND_INTERVAL_MS;
     bool emergencySend = alertData.shouldTransmitNow;
 
-    if (!periodicSend && !emergencySend) {
+    if (emergencySend){
+        return true;
+    }
+
+    if (!periodicSend) {
         return false;
     }
 
@@ -282,7 +286,7 @@ void loop()
         lastSendTime = now;
 
         if (alertData.shouldTransmitNow) {
-            alert_clearPending();
+            alert_markSent(alertData.eventType);
         }
     }
 }
